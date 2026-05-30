@@ -1,0 +1,15 @@
+# Local development stack. On Databricks, Spark + Delta are provided by the
+# runtime; you only need dbt-databricks there.
+
+pyspark==3.5.1
+delta-spark==3.2.0
+
+# dbt — use dbt-databricks against your warehouse/cluster.
+dbt-core==1.8.6
+dbt-databricks==1.8.5
+
+# Airflow (pin to a constraints file in real installs).
+apache-airflow==2.9.3
+
+# data generation
+Faker==25.0.0

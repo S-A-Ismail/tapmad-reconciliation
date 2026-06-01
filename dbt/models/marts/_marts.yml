@@ -1,0 +1,42 @@
+version: 2
+
+models:
+  - name: reconciliation_daily
+    description: >
+      Daily reconciliation summary, one row per (business_date, operator_code).
+      The table Finance opens each morning. Drill down to individual breaks via
+      gold.fact_reconciliation_break on (business_date, operator_code).
+    columns:
+      - name: business_date
+        tests: [not_null]
+      - name: operator_code
+        tests: [not_null]
+      - name: partner_txn_count
+        tests: [not_null]
+      - name: internal_txn_count
+        tests: [not_null]
+      - name: matched_count
+        tests: [not_null]
+      - name: break_count
+        tests: [not_null]
+      - name: variance
+        description: "partner_amount_total - internal_amount_total over matched+break rows."
+      - name: match_rate
+        description: "matched_count / partner_txn_count. Alert below threshold."
+    # composite uniqueness: never two rows for the same day+operator
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: [business_date, operator_code]
+
+  - name: revenue_monthly_close
+    description: >
+      Recognized revenue per (month, operator) for the monthly book close, built
+      only from reconciled money-moving rows, with audit columns exposing how
+      much rests on imperfect (mismatched / unentitled) transactions.
+    columns:
+      - name: close_month
+        tests: [not_null]
+      - name: operator_code
+        tests: [not_null]
+      - name: recognized_revenue
+        tests: [not_null]

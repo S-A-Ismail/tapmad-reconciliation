@@ -1,0 +1,39 @@
+version: 2
+
+# These are the Delta tables produced by the Spark layers. dbt reads them as
+# sources; it does not own their creation. Register them in the metastore once
+# (the Spark jobs write to these paths; on Databricks point an external/managed
+# table at each path, or use saveAsTable in the jobs).
+
+sources:
+  - name: silver
+    description: "Canonical, normalized event streams produced by the Spark silver jobs."
+    schema: silver
+    tables:
+      - name: partner_events
+        description: "One canonical row per operator (money-moved) transaction, UTC-normalized."
+        columns:
+          - name: partner_txn_id
+            description: "Operator's unique transaction id."
+          - name: business_date
+            description: "UTC-derived reconciliation bucket date."
+      - name: platform_events
+        description: "Canonical internal entitlement events unioned across all operator-suffixed OLTP tables."
+
+  - name: gold
+    description: "Reconciliation results produced by the Spark reconciliation engine."
+    schema: gold
+    tables:
+      - name: fact_reconciliation_break
+        description: >
+          One row per reconciled unit (matched pair, unmatched partner row, or
+          unmatched platform row), tagged with recon_status. The drill-down
+          detail behind reconciliation_daily.
+        columns:
+          - name: recon_status
+            description: "MATCHED / AMOUNT_MISMATCH / MISSING_ON_PLATFORM / MISSING_AT_PARTNER / ORPHAN_CHURN / LATE_ARRIVAL."
+          - name: business_date
+          - name: operator_code
+          - name: partner_amount
+          - name: internal_amount
+          - name: amount_variance

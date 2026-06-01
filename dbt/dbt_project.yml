@@ -1,0 +1,41 @@
+name: "tapmad_reconciliation"
+version: "1.0.0"
+config-version: 2
+
+# This profile name must match an entry in profiles.yml (see profiles.yml.example).
+profile: "tapmad_reconciliation"
+
+model-paths: ["models"]
+test-paths: ["tests"]
+macro-paths: ["macros"]
+
+target-path: "target"
+clean-targets:
+  - "target"
+  - "dbt_packages"
+
+# ---------------------------------------------------------------------------
+# Materialization strategy by layer.
+#  - staging:      views — cheap, always-fresh reads over the Spark-built Delta
+#                  tables (silver + gold.fact_reconciliation_break).
+#  - intermediate: ephemeral — pure SQL building blocks, no physical table.
+#  - marts:        incremental Delta tables keyed on business_date so a re-run
+#                  of one day replaces only that day (mirrors Spark idempotency).
+# ---------------------------------------------------------------------------
+models:
+  tapmad_reconciliation:
+    staging:
+      +materialized: view
+      +schema: staging
+    intermediate:
+      +materialized: ephemeral
+    marts:
+      +materialized: incremental
+      +file_format: delta
+      +incremental_strategy: replace_where
+      +schema: marts
+
+vars:
+  # Amount tolerance used inside the dbt amount-balance test. Keep in sync with
+  # spark/config/operator_config.py RECON_CONFIG.amount_abs_tolerance.
+  amount_abs_tolerance: 0.01

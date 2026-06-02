@@ -1,13 +1,23 @@
+{%- set inc_strategy = var('dbt_incremental_strategy', 'replace_where') -%}
 {{
   config(
     materialized='incremental',
-    incremental_strategy='replace_where',
-    incremental_predicates=["business_date in (select distinct business_date from " ~ this ~ ")"],
+    incremental_strategy=inc_strategy,
+    incremental_predicates=(
+      ["business_date in (select distinct business_date from " ~ this ~ ")"]
+      if inc_strategy == 'replace_where' else none
+    ),
     file_format='delta',
     partition_by=['business_date'],
     unique_key=['business_date', 'operator_code']
   )
 }}
+
+-- Idempotency strategy is portable:
+--   * Databricks (default): replace_where on business_date.
+--   * open-source Spark (local container): insert_overwrite does dynamic
+--     partition overwrite on business_date - same per-day atomic replace.
+-- Pass --vars '{dbt_incremental_strategy: insert_overwrite}' for the local run.
 
 -- =====================================================================
 -- reconciliation_daily  —  THE TABLE FINANCE OPENS EACH MORNING

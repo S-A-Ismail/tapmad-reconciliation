@@ -1,0 +1,26 @@
+# Airflow image = official Airflow + Java + Spark/Delta + dbt, so the DAG's
+# tasks can run the PySpark jobs and dbt inside the worker.
+
+FROM apache/airflow:2.9.3-python3.11
+
+USER root
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends default-jdk procps \
+    && rm -rf /var/lib/apt/lists/*
+ENV JAVA_HOME=/usr/lib/jvm/default-java
+ENV PATH="${JAVA_HOME}/bin:${PATH}"
+
+USER airflow
+# Spark/Delta + dbt for the DAG tasks. (Airflow itself is already in the base.)
+COPY docker/requirements-pipeline.txt /tmp/requirements-pipeline.txt
+RUN pip install --no-cache-dir -r /tmp/requirements-pipeline.txt
+
+# warm Delta jar cache as the airflow user
+COPY docker/warm_cache.py /tmp/warm_cache.py
+RUN python /tmp/warm_cache.py
+
+ENV SPARK_CONF_DIR=/opt/sparkconf
+COPY --chown=airflow:0 docker/spark-defaults.conf /opt/sparkconf/spark-defaults.conf
+
+ENV LAKEHOUSE_ROOT=/lakehouse
+ENV PYTHONPATH=/opt/airflow/repo

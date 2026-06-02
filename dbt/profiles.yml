@@ -1,0 +1,26 @@
+# Committed profile (no secrets - everything sensitive comes from env vars).
+# Used by the containers via --profiles-dir /app/dbt (pipeline) and
+# DBT_PROFILES_DIR=/opt/airflow/repo/dbt (Airflow).
+#
+#   local      -> dbt-spark "session": runs against the in-container Spark, reads
+#                 the Delta tables registered by spark/register_tables.py. DEFAULT.
+#   databricks -> the real warehouse (set DBT_TARGET=databricks + creds).
+
+tapmad_reconciliation:
+  target: "{{ env_var('DBT_TARGET', 'local') }}"
+  outputs:
+    local:
+      type: spark
+      method: session
+      schema: recon          # outputs: recon / recon_staging / recon_marts
+      host: localhost        # ignored by the session method
+      threads: 4
+
+    databricks:
+      type: databricks
+      catalog: "{{ env_var('DATABRICKS_CATALOG', 'tapmad') }}"
+      schema: reconciliation
+      host: "{{ env_var('DATABRICKS_HOST') }}"
+      http_path: "{{ env_var('DATABRICKS_HTTP_PATH') }}"
+      token: "{{ env_var('DATABRICKS_TOKEN') }}"
+      threads: 4

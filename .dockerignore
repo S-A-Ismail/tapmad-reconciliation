@@ -1,0 +1,16 @@
+# keep the build context small + don't ship local state into the image
+.git/
+lakehouse/
+**/__pycache__/
+*.pyc
+.venv/
+venv/
+dbt/target/
+dbt/dbt_packages/
+dbt/logs/
+spark-warehouse/
+metastore_db/
+derby.log
+.DS_Store
+.idea/
+.vscode/

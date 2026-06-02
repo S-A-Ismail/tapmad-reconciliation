@@ -119,15 +119,31 @@ with DAG(
                    "arg_flag": "--business-date", "ds": ds},
     )
 
+    # register the Delta paths as catalog tables so dbt's spark-session target
+    # can read silver/gold. (No-op on Databricks where Unity Catalog already
+    # holds the tables; needed for the local container metastore.)
+    register = PythonOperator(
+        task_id="register_tables",
+        python_callable=lambda: __import__(
+            "subprocess"
+        ).run(
+            [__import__("sys").executable, "-m", "spark.register_tables"],
+            check=True, cwd=REPO,
+        ),
+    )
+
     # dbt builds the marts AND runs tests; --vars threads the business_date so
     # the incremental replace_where targets exactly this day.
     dbt_build = BashOperator(
         task_id="dbt_build",
         bash_command=(
             f"cd {REPO}/dbt && "
+            "dbt deps && "
             "dbt build "
             "--select staging intermediate marts "
-            "--vars '{business_date: " + ds + "}'"
+            "--target ${DBT_TARGET:-local} "
+            "--vars '{business_date: " + ds
+            + ", dbt_incremental_strategy: ${DBT_INC_STRATEGY:-insert_overwrite}}'"
         ),
     )
 
@@ -136,7 +152,7 @@ with DAG(
         generate >> [bronze_operator, bronze_internal]
     bronze_operator >> silver_partner
     bronze_internal >> silver_platform
-    [silver_partner, silver_platform] >> reconcile >> dbt_build
+    [silver_partner, silver_platform] >> reconcile >> register >> dbt_build
 
 
 def _run_subprocess_generate(ds: str):

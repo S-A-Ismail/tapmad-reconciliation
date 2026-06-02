@@ -256,6 +256,31 @@ dbt build --vars '{business_date: 2024-01-15}'   # runs models + tests
 Point Airflow at `airflow/dags/`; the `tapmad_reconciliation_daily` DAG runs the
 whole chain and `dbt build`. Backfill any date to restate it.
 
+### Option D — everything in Docker (no local Python/Java/Spark needed)
+The whole stack is containerized: the PySpark jobs and dbt run in one image
+(Spark in `local[*]` mode), Airflow runs in its own image, and all services
+share a `lakehouse` Delta volume. dbt's `local` target uses **dbt-spark's
+session method** against the in-container Spark, so the marts build fully
+offline (no warehouse required); `spark/register_tables.py` exposes the silver/
+gold Delta paths to dbt via a local Hive metastore.
+
+```bash
+docker compose build
+
+# run the pipeline (generate -> bronze -> silver -> gold -> preview)
+docker compose run --rm pipeline
+
+# build the dbt marts + tests (registers tables, then dbt build on local Spark)
+docker compose run --rm dbt
+
+# or the full Airflow experience: UI at http://localhost:8080 (airflow / airflow)
+docker compose --profile airflow up -d
+```
+
+`make build` / `make pipeline` / `make dbt` / `make airflow-up` wrap these.
+To point dbt at a real warehouse instead: `DBT_TARGET=databricks` plus
+`DATABRICKS_HOST` / `DATABRICKS_HTTP_PATH` / `DATABRICKS_TOKEN`.
+
 > **Note on running code:** Option A runs the whole thing end-to-end on a
 > laptop. The synthetic generator plants every reconciliation scenario, so each
 > `recon_status` shows up in the output and you can see the classification work.
@@ -295,6 +320,9 @@ tapmad-reconciliation/
 ├── README.md                        ← you are here
 ├── run_local.py                     ← one-shot local end-to-end runner
 ├── requirements.txt
+├── docker-compose.yml               ← full stack: pipeline + dbt + Airflow
+├── Makefile                         ← make build / pipeline / dbt / airflow-up
+├── docker/                          ← Dockerfiles, spark-defaults, jar warm-up
 ├── data/synthetic/generate_data.py  ← plants every reconciliation scenario
 ├── spark/
 │   ├── config/operator_config.py    ← the 6-7 operator shapes + recon knobs

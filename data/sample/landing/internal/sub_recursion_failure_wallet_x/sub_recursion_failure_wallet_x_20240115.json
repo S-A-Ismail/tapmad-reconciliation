@@ -1,0 +1,2 @@
+{"failure_id": "fail-a3d0fe9ff5", "sub_id": "sub-098c929dbf", "user_id": "u-e464cb9283", "operator_code": "wallet_x", "failure_reason": "user_cancelled", "attempt_ts": "2024-01-15T18:50:00", "retry_count": 3}
+{"failure_id": "fail-0badac881f", "sub_id": "sub-c14b08f84f", "user_id": "u-3e6d873c4e", "operator_code": "wallet_x", "failure_reason": "insufficient_balance", "attempt_ts": "2024-01-15T20:26:00", "retry_count": 2}

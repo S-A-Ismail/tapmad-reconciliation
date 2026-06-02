@@ -1,0 +1,6 @@
+{"sub_id": "sub-a26a69dc11", "user_id": "u-15a530ca25", "operator_code": "telco_a", "plan_id": "P_BASIC", "partner_txn_id": "telco_a-2541960209d1", "status": "active", "created_ts": "2024-01-15T13:10:00", "amount": 299.0}
+{"sub_id": "sub-0d912ca86c", "user_id": "u-c9b7e887a6", "operator_code": "telco_a", "plan_id": "P_BASIC", "partner_txn_id": "telco_a-5ec4b5ca50ef", "status": "active", "created_ts": "2024-01-15T22:40:00", "amount": 99.0}
+{"sub_id": "sub-3db4cef22a", "user_id": "u-a24e2fb3ba", "operator_code": "telco_a", "plan_id": "P_PREMIUM", "partner_txn_id": "telco_a-331c1acb6173", "status": "active", "created_ts": "2024-01-15T15:35:00", "amount": 299.0}
+{"sub_id": "sub-87699c8d73", "user_id": "u-f365f494d9", "operator_code": "telco_a", "plan_id": "P_BASIC", "partner_txn_id": "telco_a-4eb7e196889b", "status": "active", "created_ts": "2024-01-15T18:19:00", "amount": 149.0}
+{"sub_id": "sub-5f12aeb184", "user_id": "u-066d6d1115", "operator_code": "telco_a", "plan_id": "P_STD", "partner_txn_id": "telco_a-a27d934c3f01", "status": "active", "created_ts": "2024-01-15T16:45:00", "amount": 299.0}
+{"sub_id": "sub-a461888452", "user_id": "u-041eba68de", "operator_code": "telco_a", "plan_id": "P_STD", "partner_txn_id": "telco_a-58ab451a80be", "status": "active", "created_ts": "2024-01-15T05:23:00", "amount": 299.0}

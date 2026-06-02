@@ -1,0 +1,2 @@
+transaction_id,phone_number,event_type,plan,value,ccy,created_at
+telco_a-80d88bac0fda,acct-9894264595,RENEW_OK,P_BASIC,299.0,PKR,2024-01-15 21:31:00

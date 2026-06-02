@@ -1,0 +1,2 @@
+{"failure_id": "fail-c0dc3fccd6", "sub_id": "sub-5767c3500f", "user_id": "u-e887d9ade3", "operator_code": "telco_d", "failure_reason": "partner_timeout", "attempt_ts": "2024-01-15T12:55:00", "retry_count": 1}
+{"failure_id": "fail-9dab917089", "sub_id": "sub-b813b6b68e", "user_id": "u-0ebc467cb2", "operator_code": "telco_d", "failure_reason": "insufficient_balance", "attempt_ts": "2024-01-15T19:16:00", "retry_count": 0}

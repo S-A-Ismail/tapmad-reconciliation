@@ -1,0 +1,10 @@
+{"user_id": "u-015ecc6f2a", "operator_code": "wallet_y", "churn_ts": "2024-01-12T00:00:00", "churn_reason": "voluntary", "last_known_sub_id": "sub-00b9b05847"}
+{"user_id": "u-a554f4e4ee", "operator_code": "telco_d", "churn_ts": "2024-01-12T00:00:00", "churn_reason": "voluntary", "last_known_sub_id": "sub-0def57ccb7"}
+{"user_id": "u-c8f3b9d622", "operator_code": "wallet_y", "churn_ts": "2024-01-12T00:00:00", "churn_reason": "support_ticket", "last_known_sub_id": "sub-b4a1beccaa"}
+{"user_id": "u-1ad9dfa38f", "operator_code": "telco_b", "churn_ts": "2024-01-12T00:00:00", "churn_reason": "support_ticket", "last_known_sub_id": "sub-95e3ef5c3f"}
+{"user_id": "u-8c0b50ca8c", "operator_code": "telco_c", "churn_ts": "2024-01-12T00:00:00", "churn_reason": "voluntary", "last_known_sub_id": "sub-c34a363992"}
+{"user_id": "u-7ba730c041", "operator_code": "telco_d", "churn_ts": "2024-01-12T00:00:00", "churn_reason": "voluntary", "last_known_sub_id": "sub-61dff37506"}
+{"user_id": "u-06a3127aec", "operator_code": "telco_d", "churn_ts": "2024-01-12T00:00:00", "churn_reason": "voluntary", "last_known_sub_id": "sub-0a15937834"}
+{"user_id": "u-6f96900261", "operator_code": "wallet_x", "churn_ts": "2024-01-12T00:00:00", "churn_reason": "support_ticket", "last_known_sub_id": "sub-674ef85383"}
+{"user_id": "u-822a6716a4", "operator_code": "wallet_x", "churn_ts": "2024-01-12T00:00:00", "churn_reason": "voluntary", "last_known_sub_id": "sub-386f6db4f5"}
+{"user_id": "u-c910c6acda", "operator_code": "wallet_x", "churn_ts": "2024-01-12T00:00:00", "churn_reason": "support_ticket", "last_known_sub_id": "sub-3f7be7ba53"}

@@ -351,61 +351,71 @@ imperfect rows.
 
 ---
 
-## 8. How to run
+## 8. Quick start (Docker)
 
-### Option A — fully local, no cloud, no warehouse (fastest demo)
+Everything runs in containers — no local Python, Java, or Spark needed. Spark
+runs in `local[*]` mode inside the image, and dbt builds the marts against that
+same in-container Spark (no warehouse required). **Only prerequisite: Docker +
+Docker Compose.**
+
+### The data is already generated
+
+The raw inputs are committed under [`data/sample/`](data/sample), so you don't
+have to generate anything to get started. They were produced once with:
+
 ```bash
-python -m venv .venv && source .venv/bin/activate   # or .venv\Scripts\activate on Windows
-pip install -r requirements.txt
-
-# generate data + run bronze→silver→gold + print a reconciliation summary
-python run_local.py --business-date 2024-01-15 --n 300
-```
-You'll see a per-operator breakdown of MATCHED / AMOUNT_MISMATCH /
-MISSING_ON_PLATFORM / MISSING_AT_PARTNER / ORPHAN_CHURN / LATE_ARRIVAL plus
-partner/internal totals and variance — i.e. `reconciliation_daily` previewed in
-Spark.
-
-### Option B — build the dbt marts (needs a Databricks connection)
-```bash
-cd dbt
-cp profiles.yml.example ~/.dbt/profiles.yml   # fill in host/http_path/token
-dbt deps
-dbt build --vars '{business_date: 2024-01-15}'   # runs models + tests
+LAKEHOUSE_ROOT=data/sample python data/synthetic/generate_data.py \
+  --business-date 2024-01-15 --n 150
 ```
 
-### Option C — orchestrated via Airflow
-Point Airflow at `airflow/dags/`; the `tapmad_reconciliation_daily` DAG runs the
-whole chain and `dbt build`. Backfill any date to restate it.
+The generator uses a fixed random seed, so this is deterministic — the
+container regenerates the *identical* dataset when it runs, so what you inspect
+in `data/sample/` is exactly what the pipeline processes.
 
-### Option D — everything in Docker (no local Python/Java/Spark needed)
-The whole stack is containerized: the PySpark jobs and dbt run in one image
-(Spark in `local[*]` mode), Airflow runs in its own image, and all services
-share a `lakehouse` Delta volume. dbt's `local` target uses **dbt-spark's
-session method** against the in-container Spark, so the marts build fully
-offline (no warehouse required); `spark/register_tables.py` exposes the silver/
-gold Delta paths to dbt via a local Hive metastore.
+**What's in the landing data:**
+
+| Folder | Contents |
+|--------|----------|
+| `data/sample/landing/operator_feeds/<operator>/` | the 6–7 partner feeds, each in its **raw** shape — `telco_a/b/d` CSV (comma / semicolon / epoch-millis), `telco_c` & `wallet_x` JSON (with `+04:00` offset / UTC `Z`). The `*_20240118.csv` files are **late arrivals** (business_date 2024-01-15, landed the 18th). |
+| `data/sample/landing/internal/<table>_<operator>/` | the internal OLTP CDC as JSON — `sub_initial_*`, `sub_recursion_success_*`, `sub_recursion_failure_*`, plus shared `user_churn_events`. |
+
+### Run it
 
 ```bash
+# 1. build the images (first run pulls base images + caches the Delta jars)
 docker compose build
 
-# run the pipeline (generate -> bronze -> silver -> gold -> preview)
+# 2. run the pipeline: ingest -> normalize -> reconcile, then print a summary
 docker compose run --rm pipeline
 
-# build the dbt marts + tests (registers tables, then dbt build on local Spark)
+# 3. build the Finance marts + data tests (dbt on the in-container Spark)
 docker compose run --rm dbt
 
-# or the full Airflow experience: UI at http://localhost:8080 (airflow / airflow)
+# optional: the full Airflow experience (UI at http://localhost:8080, airflow/airflow)
 docker compose --profile airflow up -d
 ```
 
-`make build` / `make pipeline` / `make dbt` / `make airflow-up` wrap these.
-To point dbt at a real warehouse instead: `DBT_TARGET=databricks` plus
-`DATABRICKS_HOST` / `DATABRICKS_HTTP_PATH` / `DATABRICKS_TOKEN`.
+`make build` / `make pipeline` / `make dbt` / `make airflow-up` are shortcuts for
+the same commands. To point dbt at a real warehouse instead of local Spark, set
+`DBT_TARGET=databricks` plus `DATABRICKS_HOST` / `DATABRICKS_HTTP_PATH` /
+`DATABRICKS_TOKEN`.
 
-> **Note on running code:** Option A runs the whole thing end-to-end on a
-> laptop. The synthetic generator plants every reconciliation scenario, so each
-> `recon_status` shows up in the output and you can see the classification work.
+### How the data is transformed
+
+Both `pipeline` and `dbt` containers share one `lakehouse` Delta volume, so each
+step reads what the previous one wrote. Following one `business_date` through:
+
+| Step (code) | Reads | Writes | What it does |
+|-------------|-------|--------|--------------|
+| **landing** | — | `lakehouse/landing/` | the raw operator + internal files (the container generates them here on run) |
+| **bronze** (`spark/ingestion/`) | landing | `lakehouse/bronze/` | lands raw rows + ingest metadata; **`MERGE` on natural key** so re-sent corrections never duplicate |
+| **silver** (`spark/silver/`) | bronze | `lakehouse/silver/partner_events`, `…/platform_events` | normalizes the 6–7 shapes into **one canonical schema**, converts each operator's local time → **UTC**, derives `business_date`; unions the operator-suffixed internal tables into one stream |
+| **gold — engine** (`spark/gold/`) | silver | `lakehouse/gold/fact_reconciliation_break` | the **3-tier matcher** (strong key → fallback → classify) tags every row `MATCHED` / `AMOUNT_MISMATCH` / `MISSING_ON_PLATFORM` / `MISSING_AT_PARTNER` / `ORPHAN_CHURN` / `LATE_ARRIVAL` |
+| **gold — marts** (`dbt/`) | gold fact | `reconciliation_daily`, `revenue_monthly_close` | per-day/per-operator summary Finance opens each morning + the monthly recognized-revenue close; dbt tests assert no double-counting and matched-row balance |
+
+The `pipeline` container ends by printing a per-operator breakdown (matched vs.
+each break category, partner/internal totals, variance) — the same numbers that
+land in `reconciliation_daily`.
 
 ---
 

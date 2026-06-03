@@ -35,5 +35,6 @@ ENV LAKEHOUSE_ROOT=/lakehouse
 ENV PYTHONPATH=/app
 RUN mkdir -p /lakehouse
 
-# default: run the whole pipeline end-to-end for one day
-CMD ["python", "run_local.py", "--business-date", "2024-01-15", "--n", "300"]
+# default: run the whole pipeline end-to-end for one day (override date via
+# the BUSINESS_DATE / N env vars)
+CMD ["bash", "docker/run_pipeline.sh"]

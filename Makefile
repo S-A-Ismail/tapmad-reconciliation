@@ -9,8 +9,8 @@ N    ?= 300
 build:            ## build the pipeline + airflow images
 	docker compose build
 
-pipeline:         ## run generate -> bronze -> silver -> gold -> preview for $(DATE)
-	docker compose run --rm pipeline python run_local.py --business-date $(DATE) --n $(N)
+pipeline:         ## run generate -> bronze -> silver -> gold for $(DATE)
+	docker compose run --rm -e BUSINESS_DATE=$(DATE) -e N=$(N) pipeline
 
 dbt:              ## register tables + build dbt marts and tests (local spark target)
 	docker compose run --rm dbt

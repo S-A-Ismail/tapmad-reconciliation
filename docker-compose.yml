@@ -35,8 +35,8 @@ services:
   # ---- one-shot: run the whole pipeline for one business date --------------
   pipeline:
     <<: *pipeline-build
-    # default CMD (run_local.py) comes from the image; override per run, e.g.:
-    #   docker compose run --rm pipeline python run_local.py --business-date 2024-02-01 --n 500
+    # default CMD (docker/run_pipeline.sh) comes from the image; pick a date with:
+    #   docker compose run --rm -e BUSINESS_DATE=2024-02-01 -e N=500 pipeline
 
   # ---- one-shot: register tables + build the dbt marts + tests -------------
   dbt:

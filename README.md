@@ -450,11 +450,10 @@ Honest list of what I deliberately deferred under the 72-hour window:
 ```
 tapmad-reconciliation/
 ├── README.md                        ← you are here
-├── run_local.py                     ← one-shot local end-to-end runner
 ├── requirements.txt
 ├── docker-compose.yml               ← full stack: pipeline + dbt + Airflow
 ├── Makefile                         ← make build / pipeline / dbt / airflow-up
-├── docker/                          ← Dockerfiles, spark-defaults, jar warm-up
+├── docker/                          ← Dockerfiles, run_pipeline.sh, spark-defaults
 ├── data/synthetic/generate_data.py  ← plants every reconciliation scenario
 ├── spark/
 │   ├── config/operator_config.py    ← the 6-7 operator shapes + recon knobs

@@ -475,4 +475,24 @@ window-function dedupe, partitioning by `business_date`, and idempotent
 `MERGE` / `replaceWhere` writes. The port to Azure is mechanical and fully
 specified in [`docs/azure_migration_plan.md`](docs/azure_migration_plan.md):
 business logic unchanged, only storage paths and the orchestrator wrapper move.
-```
+
+---
+
+## 12. Migration to Azure (in brief)
+
+Tapmad runs PySpark on **Azure Fabric with ADLS Gen2**. Since the pipeline is
+already Spark + Delta with idempotent partition writes, the move is about *where
+it runs and where data lives* — the business logic doesn't change:
+
+- **Storage** — local lakehouse paths → **ADLS Gen2** (`abfss://…`), tables in
+  **Unity Catalog**. Realistically one file changes: `spark/config/paths.py`.
+- **Compute** — the `spark/` jobs run unchanged as **Databricks / Fabric**
+  notebooks or jobs (`get_spark()` already returns the cluster session).
+- **Ingestion** — the local file reader → **Azure Data Factory** (operator SFTP)
+  + **CDC into ADLS** (or Auto Loader for incremental file pickup).
+- **Orchestration** — the Airflow DAG → **Databricks Workflows** or **ADF**;
+  same task graph, only the operator type changes.
+- **dbt** — flip the target to `databricks` (already in `dbt/profiles.yml`).
+
+The full step-by-step plan lives in
+[`docs/azure_migration_plan.md`](docs/azure_migration_plan.md).

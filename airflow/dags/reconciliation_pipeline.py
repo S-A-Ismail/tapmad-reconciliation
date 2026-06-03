@@ -30,8 +30,8 @@ Key orchestration decisions:
     never silently reaches Finance.
 
 In production each PythonOperator below becomes a DatabricksSubmitRunOperator
-(or Databricks Workflow task) pointing at the same modules on the cluster —
-see docs/azure_migration_plan.md. The task GRAPH does not change.
+(or Databricks Workflow task) pointing at the same modules on the cluster.
+The task GRAPH does not change.
 """
 
 from __future__ import annotations

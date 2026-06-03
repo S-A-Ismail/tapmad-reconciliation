@@ -1,7 +1,6 @@
 # Copy to ~/.dbt/profiles.yml (or set DBT_PROFILES_DIR) and fill in secrets.
 # This targets Databricks (what you run today). The SAME models run unchanged
-# on Azure Databricks — only host/http_path/catalog change. See
-# docs/azure_migration_plan.md.
+# on Azure Databricks — only host/http_path/catalog change.
 
 tapmad_reconciliation:
   target: dev

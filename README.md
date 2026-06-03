@@ -19,9 +19,9 @@ decision tree**, classifies every disagreement, and produces:
 - `revenue_monthly_close` — the recognized-revenue figure for the **book close**
 
 Built on **PySpark + Delta Lake + dbt + Airflow** (the stack I run today).
-Tapmad runs Azure Fabric/Databricks — see [`docs/azure_migration_plan.md`](docs/azure_migration_plan.md)
-for the from-scratch port. The logic moves over **unchanged**; only storage
-paths and the orchestrator wrapper change.
+Tapmad runs Azure Fabric/Databricks — the port is mechanical
+([§ 12](#12-migration-to-azure-in-brief)): the logic moves over **unchanged**,
+only storage paths and the orchestrator wrapper change.
 
 ---
 
@@ -472,8 +472,7 @@ tapmad-reconciliation/
 │   ├── models/intermediate/         ← pivots + independent source counts
 │   ├── models/marts/                ← reconciliation_daily, revenue_monthly_close
 │   └── tests/                       ← no-double-counting, matched-balance
-├── airflow/dags/                    ← daily DAG (= backfill/restatement)
-└── docs/azure_migration_plan.md     ← from-scratch port to Fabric/Databricks
+└── airflow/dags/                    ← daily DAG (= backfill/restatement)
 ```
 
 ---
@@ -486,9 +485,9 @@ dbt + Airflow** because that's what I run day-to-day and it lets the whole thing
 run locally. The Spark and Delta fundamentals are all
 here — config-driven normalization, joins across operator-suffixed tables,
 window-function dedupe, partitioning by `business_date`, and idempotent
-`MERGE` / `replaceWhere` writes. The port to Azure is mechanical and fully
-specified in [`docs/azure_migration_plan.md`](docs/azure_migration_plan.md):
-business logic unchanged, only storage paths and the orchestrator wrapper move.
+`MERGE` / `replaceWhere` writes. The port to Azure is mechanical
+([§ 12](#12-migration-to-azure-in-brief)): business logic unchanged, only
+storage paths and the orchestrator wrapper move.
 
 ---
 
@@ -507,6 +506,3 @@ it runs and where data lives* — the business logic doesn't change:
 - **Orchestration** — the Airflow DAG → **Databricks Workflows** or **ADF**;
   same task graph, only the operator type changes.
 - **dbt** — flip the target to `databricks` (already in `dbt/profiles.yml`).
-
-The full step-by-step plan lives in
-[`docs/azure_migration_plan.md`](docs/azure_migration_plan.md).

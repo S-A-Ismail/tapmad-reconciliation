@@ -2,8 +2,9 @@
 Centralized storage paths (the "medallion" layout).
 
 Locally these are folders under ./lakehouse. On Databricks they become
-ADLS / Unity Catalog locations — see docs/azure_migration_plan.md. Keeping
-them in one module means the migration touches exactly one file.
+ADLS / Unity Catalog locations (see the README's "Migration to Azure"
+section). Keeping them in one module means the migration touches exactly
+one file.
 
 Layout:
     landing/   raw files exactly as operators / CDC drop them

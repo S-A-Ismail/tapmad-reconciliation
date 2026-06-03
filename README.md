@@ -410,6 +410,9 @@ the same commands. To point dbt at a real warehouse instead of local Spark, set
 - `./lakehouse/exports/<layer>/<table>/` — clean single-file **Parquet**
   snapshots of each bronze / silver / gold table, written by the final
   `spark.export_parquet` step for easy local inspection.
+- `./lakehouse/exports/marts/<table>/` — Parquet snapshots of the dbt marts
+  (`reconciliation_daily`, `revenue_monthly_close`), written by the `dbt`
+  service after `dbt build`.
 
 (`lakehouse/` is git-ignored — it's generated output, not committed.)
 

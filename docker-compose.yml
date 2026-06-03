@@ -49,7 +49,8 @@ services:
         dbt deps --project-dir /app/dbt --profiles-dir /app/dbt &&
         dbt build --project-dir /app/dbt --profiles-dir /app/dbt
         --target ${DBT_TARGET:-local}
-        --vars '{business_date: 2024-01-15, dbt_incremental_strategy: ${DBT_INC_STRATEGY:-insert_overwrite}}'
+        --vars '{business_date: 2024-01-15, dbt_incremental_strategy: ${DBT_INC_STRATEGY:-insert_overwrite}}' &&
+        python -m spark.export_marts_parquet
 
   # ---- Airflow metadata DB -------------------------------------------------
   postgres:

@@ -28,8 +28,8 @@ x-pipeline-build: &pipeline-build
     DATABRICKS_HTTP_PATH: ${DATABRICKS_HTTP_PATH:-}
     DATABRICKS_TOKEN: ${DATABRICKS_TOKEN:-}
   volumes:
-    - .:/app                       # live code edits
-    - lakehouse:/lakehouse          # shared Delta storage + metastore
+    - .:/app                        # live code edits
+    - ./lakehouse:/lakehouse        # Delta + parquet land here on your machine
 
 services:
   # ---- one-shot: run the whole pipeline for one business date --------------
@@ -88,7 +88,7 @@ services:
       DBT_INC_STRATEGY: ${DBT_INC_STRATEGY:-insert_overwrite}
     volumes: &airflow-volumes
       - .:/opt/airflow/repo
-      - lakehouse:/lakehouse
+      - ./lakehouse:/lakehouse
       - airflow-logs:/opt/airflow/logs
     entrypoint: ["/bin/bash", "-lc"]
     command:
@@ -127,6 +127,5 @@ services:
     restart: unless-stopped
 
 volumes:
-  lakehouse:
   pgdata:
   airflow-logs:

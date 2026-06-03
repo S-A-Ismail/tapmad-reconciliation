@@ -400,6 +400,19 @@ the same commands. To point dbt at a real warehouse instead of local Spark, set
 `DBT_TARGET=databricks` plus `DATABRICKS_HOST` / `DATABRICKS_HTTP_PATH` /
 `DATABRICKS_TOKEN`.
 
+### Where the output lands
+
+`lakehouse/` is bind-mounted to your machine, so every layer is written to
+`./lakehouse/` as the pipeline runs:
+
+- `./lakehouse/bronze|silver|gold/` — the Delta tables (parquet part-files + a
+  `_delta_log/`).
+- `./lakehouse/exports/<layer>/<table>/` — clean single-file **Parquet**
+  snapshots of each bronze / silver / gold table, written by the final
+  `spark.export_parquet` step for easy local inspection.
+
+(`lakehouse/` is git-ignored — it's generated output, not committed.)
+
 ### How the data is transformed
 
 Both `pipeline` and `dbt` containers share one `lakehouse` Delta volume, so each

@@ -89,11 +89,20 @@ def normalize_operator(spark, operator_code: str, business_date: str):
     if bronze.rdd.isEmpty():
         return None
 
-    # 1. rename raw -> canonical
-    df = bronze
-    for raw_col, canon_col in cfg["column_map"].items():
-        if raw_col in df.columns and raw_col != canon_col:
-            df = df.withColumnRenamed(raw_col, canon_col)
+    # 1. project ONLY this operator's mapped columns to their canonical names.
+    #    Bronze is a single Delta table holding the MERGED superschema of every
+    #    operator, so an in-place rename collides: telco_b's "currency_code" ->
+    #    "currency" clashes with telco_d's raw "currency" column that also lives
+    #    in the merged schema. Selecting via each operator's own column_map drops
+    #    all foreign columns and avoids the AMBIGUOUS_REFERENCE entirely.
+    select_exprs = [
+        F.col(raw_col).alias(canon_col)
+        for raw_col, canon_col in cfg["column_map"].items()
+    ]
+    # operator_code + file_arrival_date are stamped on at bronze ingest (not part
+    # of column_map), so carry them through explicitly.
+    select_exprs += [F.col("operator_code"), F.col("file_arrival_date")]
+    df = bronze.select(*select_exprs)
 
     # 2. parse timestamp into txn_ts_parsed (+ _ts_is_instant flag)
     df = _parse_timestamp(df, cfg)

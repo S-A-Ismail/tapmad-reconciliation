@@ -23,3 +23,6 @@ python -m spark.silver.silver_internal_events --business-date "${BUSINESS_DATE}"
 
 echo ">> gold (prints the reconciliation summary)"
 python -m spark.gold.reconciliation_engine --business-date "${BUSINESS_DATE}"
+
+echo ">> export parquet snapshots to /lakehouse/exports"
+python -m spark.export_parquet

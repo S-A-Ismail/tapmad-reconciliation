@@ -100,12 +100,84 @@ run it on Databricks.
 
 ### Data model (ERD)
 
-![Reconciliation data model — ERD](docs/img/erd.png)
-
 The two canonical silver streams (`partner_events`, `platform_events`) feed
 `fact_reconciliation_break` — one row per reconciled unit (matched pair or
 unmatched survivor) — which then rolls up into `reconciliation_daily` and
 `revenue_monthly_close`.
+
+```mermaid
+erDiagram
+    SILVER_PARTNER_EVENTS {
+        string partner_txn_id PK
+        string operator_code
+        string msisdn_or_account
+        string txn_type
+        string plan_code
+        decimal amount
+        string currency
+        timestamp txn_ts_utc
+        timestamp txn_ts_local
+        date business_date
+        date file_arrival_date
+    }
+    SILVER_PLATFORM_EVENTS {
+        string platform_event_id PK
+        string operator_code
+        string event_type
+        string sub_id
+        string user_id
+        string partner_txn_id FK
+        string plan_id
+        decimal amount
+        timestamp event_ts_utc
+        date business_date
+    }
+    FACT_RECONCILIATION_BREAK {
+        date business_date PK
+        string operator_code PK
+        string recon_status
+        string match_confidence
+        string match_key
+        string partner_txn_id FK
+        string platform_event_id FK
+        string user_id
+        string txn_type
+        decimal partner_amount
+        decimal internal_amount
+        decimal amount_variance
+        boolean is_late_arrival
+        timestamp recon_run_ts
+    }
+    RECONCILIATION_DAILY {
+        date business_date PK
+        string operator_code PK
+        long partner_txn_count
+        long internal_txn_count
+        long matched_count
+        long break_count
+        decimal partner_amount_total
+        decimal internal_amount_total
+        decimal variance
+        long amount_mismatch_count
+        long missing_on_platform_count
+        long missing_at_partner_count
+        long orphan_churn_count
+        double match_rate
+    }
+    REVENUE_MONTHLY_CLOSE {
+        date close_month PK
+        string operator_code PK
+        long recognized_txn_count
+        decimal recognized_revenue
+        decimal revenue_from_mismatched
+        decimal revenue_from_unentitled
+        decimal total_abs_variance
+    }
+    SILVER_PARTNER_EVENTS   ||--o{ FACT_RECONCILIATION_BREAK : "matched / unmatched"
+    SILVER_PLATFORM_EVENTS  ||--o{ FACT_RECONCILIATION_BREAK : "matched / unmatched"
+    FACT_RECONCILIATION_BREAK ||--|| RECONCILIATION_DAILY : "aggregates to"
+    FACT_RECONCILIATION_BREAK ||--|| REVENUE_MONTHLY_CLOSE : "recognizes from"
+```
 
 ### Orchestration (Airflow DAG)
 
@@ -387,9 +459,7 @@ tapmad-reconciliation/
 │   ├── models/marts/                ← reconciliation_daily, revenue_monthly_close
 │   └── tests/                       ← no-double-counting, matched-balance
 ├── airflow/dags/                    ← daily DAG (= backfill/restatement)
-└── docs/
-    ├── azure_migration_plan.md      ← from-scratch port to Fabric/Databricks
-    └── img/erd.png                  ← ERD (exported from Lucid)
+└── docs/azure_migration_plan.md     ← from-scratch port to Fabric/Databricks
 ```
 
 ---

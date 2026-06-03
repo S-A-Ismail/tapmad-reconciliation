@@ -59,7 +59,10 @@ INTERNAL_TABLES = {
 
 def _read_json(spark, file_pattern: str, arrival_date: str):
     matches = glob.glob(file_pattern)
-    matches = [m for m in matches if arrival_date in m]
+    # filenames use the compact date stamp (sub_initial_telco_a_20240115.json),
+    # so match both the dashed and compact forms of arrival_date.
+    compact = arrival_date.replace("-", "")
+    matches = [m for m in matches if arrival_date in m or compact in m]
     if not matches:
         return None
     return spark.read.json(matches)

@@ -2,7 +2,7 @@
 # see docker-compose.yml for the equivalents.)
 
 DATE ?= 2024-01-15
-N    ?= 300
+N    ?= 150
 
 .PHONY: build pipeline dbt airflow-up airflow-down logs clean
 

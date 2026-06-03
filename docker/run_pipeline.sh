@@ -8,7 +8,7 @@
 set -euo pipefail
 
 BUSINESS_DATE="${BUSINESS_DATE:-2024-01-15}"
-N="${N:-300}"
+N="${N:-150}"
 
 echo ">> generate synthetic landing data for ${BUSINESS_DATE} (n=${N})"
 python data/synthetic/generate_data.py --business-date "${BUSINESS_DATE}" --n "${N}"

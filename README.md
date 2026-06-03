@@ -90,7 +90,7 @@ flowchart TD
 | **Bronze** | raw rows + ingest metadata, schema-on-read | PySpark | `MERGE` on natural key |
 | **Silver** | canonical, UTC, normalized events | PySpark | `replaceWhere` per `business_date` |
 | **Gold (fact)** | reconciliation results, per-row | PySpark | `replaceWhere` per `business_date` |
-| **Gold (marts)** | daily summary + monthly close | dbt | incremental `replace_where` |
+| **Gold (marts)** | daily summary + monthly close | dbt | `reconciliation_daily` incremental per `business_date` (`replace_where` on Databricks, `insert_overwrite` locally); `revenue_monthly_close` full rebuild |
 
 **Why this split of Spark vs dbt?** Bronze/silver/matching need imperative
 control (timezone edge cases, multi-tier joins, window dedupe) — clearer and
@@ -155,6 +155,7 @@ erDiagram
         long internal_txn_count
         long matched_count
         long break_count
+        long late_arrival_count
         decimal partner_amount_total
         decimal internal_amount_total
         decimal variance
@@ -191,7 +192,6 @@ flowchart LR
     SF --> RE
     RE --> REG["register_tables"]
     REG --> DBT["dbt build<br/>marts + tests"]
-    DBT --> PUB["publish / alert Finance"]
 ```
 
 ---
@@ -376,7 +376,7 @@ in `data/sample/` is exactly what the pipeline processes.
 
 | Folder | Contents |
 |--------|----------|
-| `data/sample/landing/operator_feeds/<operator>/` | the 6–7 partner feeds, each in its **raw** shape — `telco_a/b/d` CSV (comma / semicolon / epoch-millis), `telco_c` & `wallet_x` JSON (with `+04:00` offset / UTC `Z`). The `*_20240118.csv` files are **late arrivals** (business_date 2024-01-15, landed the 18th). |
+| `data/sample/landing/operator_feeds/<operator>/` | the 6 partner feeds, each in its **raw** shape — `telco_a` / `telco_b` / `telco_d` / `wallet_y` CSV (comma / semicolon / epoch-millis / comma), `telco_c` & `wallet_x` JSON (with `+04:00` offset / UTC `Z`). The `*_20240118.csv` files are **late arrivals** (business_date 2024-01-15, landed the 18th). |
 | `data/sample/landing/internal/<table>_<operator>/` | the internal OLTP CDC as JSON — `sub_initial_*`, `sub_recursion_success_*`, `sub_recursion_failure_*`, plus shared `user_churn_events`. |
 
 ### Run it
@@ -385,7 +385,7 @@ in `data/sample/` is exactly what the pipeline processes.
 # 1. build the images (first run pulls base images + caches the Delta jars)
 docker compose build
 
-# 2. run the pipeline: ingest -> normalize -> reconcile, then print a summary
+# 2. run the pipeline: generate -> ingest -> normalize -> reconcile (prints a summary)
 docker compose run --rm pipeline
 
 # 3. build the Finance marts + data tests (dbt on the in-container Spark)
@@ -411,11 +411,13 @@ step reads what the previous one wrote. Following one `business_date` through:
 | **bronze** (`spark/ingestion/`) | landing | `lakehouse/bronze/` | lands raw rows + ingest metadata; **`MERGE` on natural key** so re-sent corrections never duplicate |
 | **silver** (`spark/silver/`) | bronze | `lakehouse/silver/partner_events`, `…/platform_events` | normalizes the 6–7 shapes into **one canonical schema**, converts each operator's local time → **UTC**, derives `business_date`; unions the operator-suffixed internal tables into one stream |
 | **gold — engine** (`spark/gold/`) | silver | `lakehouse/gold/fact_reconciliation_break` | the **3-tier matcher** (strong key → fallback → classify) tags every row `MATCHED` / `AMOUNT_MISMATCH` / `MISSING_ON_PLATFORM` / `MISSING_AT_PARTNER` / `ORPHAN_CHURN` / `LATE_ARRIVAL` |
-| **gold — marts** (`dbt/`) | gold fact | `reconciliation_daily`, `revenue_monthly_close` | per-day/per-operator summary Finance opens each morning + the monthly recognized-revenue close; dbt tests assert no double-counting and matched-row balance |
+| **register** (`spark/register_tables.py`) | gold fact | local Hive metastore | registers the silver/gold Delta paths as catalog tables so dbt's session target can read them (no-op on Databricks/Unity Catalog) |
+| **gold — marts** (`dbt/`) | silver + gold fact | `reconciliation_daily`, `revenue_monthly_close` | per-day/per-operator summary Finance opens each morning + the monthly recognized-revenue close; dbt tests assert no double-counting and matched-row balance |
 
-The `pipeline` container ends by printing a per-operator breakdown (matched vs.
-each break category, partner/internal totals, variance) — the same numbers that
-land in `reconciliation_daily`.
+The `pipeline` container ends by printing a count of rows **per `recon_status`**
+for the day (MATCHED, AMOUNT_MISMATCH, MISSING_ON_PLATFORM, MISSING_AT_PARTNER,
+ORPHAN_CHURN, LATE_ARRIVAL) — a quick read on the day's break profile. The
+per-operator counts, totals, and variance live in `reconciliation_daily`.
 
 ---
 
@@ -454,14 +456,17 @@ tapmad-reconciliation/
 ├── docker-compose.yml               ← full stack: pipeline + dbt + Airflow
 ├── Makefile                         ← make build / pipeline / dbt / airflow-up
 ├── docker/                          ← Dockerfiles, run_pipeline.sh, spark-defaults
-├── data/synthetic/generate_data.py  ← plants every reconciliation scenario
+├── data/
+│   ├── synthetic/generate_data.py   ← plants every reconciliation scenario
+│   └── sample/                      ← pre-generated landing data (2024-01-15)
 ├── spark/
-│   ├── config/operator_config.py    ← the 6-7 operator shapes + recon knobs
+│   ├── config/operator_config.py    ← the 6 operator shapes + recon knobs
 │   ├── config/paths.py              ← medallion paths (only file Azure changes)
 │   ├── utils/                       ← spark session + Delta idempotency helpers
 │   ├── ingestion/                   ← bronze: operator feeds + internal CDC
 │   ├── silver/                      ← canonical normalization + union
-│   └── gold/reconciliation_engine.py← THE matching decision tree
+│   ├── gold/reconciliation_engine.py← THE matching decision tree
+│   └── register_tables.py           ← expose Delta paths to dbt (local metastore)
 ├── dbt/
 │   ├── models/staging/              ← typed views over silver + gold fact
 │   ├── models/intermediate/         ← pivots + independent source counts

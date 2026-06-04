@@ -61,7 +61,7 @@ flowchart TD
     end
 
     subgraph BRONZE["Bronze (raw + metadata, deduped by key)"]
-        B1["bronze.operator_feeds<br/>MERGE on (op, partner_txn_id, arrival_date)"]
+        B1["bronze.operator_feeds<br/>replace partition (op, arrival_date), batch-deduped"]
         B2["bronze.sub_initial / recursion_* / churn<br/>MERGE on PK + operator_code"]
     end
 
@@ -87,7 +87,7 @@ flowchart TD
 | Layer | What it holds | Engine | Idempotency mechanism |
 |------|----------------|--------|------------------------|
 | **Landing** | raw files as dropped | — | n/a |
-| **Bronze** | raw rows + ingest metadata, schema-on-read | PySpark | `MERGE` on natural key |
+| **Bronze** | raw rows + ingest metadata, schema-on-read | PySpark | operator feeds: `replaceWhere` per `(operator, arrival_date)`, batch-deduped; internal CDC: `MERGE` on PK |
 | **Silver** | canonical, UTC, normalized events | PySpark | `replaceWhere` per `business_date` |
 | **Gold (fact)** | reconciliation results, per-row | PySpark | `replaceWhere` per `business_date` |
 | **Gold (marts)** | daily summary + monthly close | dbt | `reconciliation_daily` incremental per `business_date` (`replace_where` on Databricks, `insert_overwrite` locally); `revenue_monthly_close` full rebuild |
@@ -291,8 +291,14 @@ These three requirements are the difference between a demo and something
 Finance can close books on.
 
 **Idempotency (operators re-send 3 days of corrections).**
-- Bronze `MERGE`s on the natural key → a re-sent row updates in place, never
-  appends a duplicate. ([`delta_utils.merge_upsert`](spark/utils/delta_utils.py))
+- Bronze operator feeds **replace the `(operator, file_arrival_date)` partition**
+  on every run (after de-duping the batch on the natural key) → re-running fully
+  rewrites that partition, so it can never accumulate duplicates and never needs
+  manual cleanup. Internal CDC uses `MERGE` on its PK (genuine upsert).
+  ([`delta_utils`](spark/utils/delta_utils.py))
+- Silver additionally keeps the **latest arrival per `partner_txn_id`**, so a
+  correction re-sent on a later day supersedes the original instead of
+  double-counting.
 - Silver/Gold use Delta **`replaceWhere "business_date = X"`** → recomputing a
   day atomically swaps *only that day's* partition. Re-running is deterministic.
 - A dbt data test [`assert_no_double_counting.sql`](dbt/tests/assert_no_double_counting.sql)
@@ -345,7 +351,7 @@ imperfect rows.
 | Matching when key missing | composite fallback, **labeled & guarded** | drop, or trust blindly | recovers real matches without hiding the risk |
 | Amount equality | abs 0.01 **or** rel 0.5% | exact equality | absorbs rounding/FX without masking breaks |
 | recursion_failure | excluded from "missing at partner" | treat as break | it's an expected non-charge; otherwise false breaks |
-| Idempotency | Delta `MERGE` + `replaceWhere` | append + dedupe later | deterministic re-runs, no double count, atomic |
+| Idempotency | partition `replaceWhere` (operator feeds, silver, gold) + `MERGE` for CDC PKs | append + dedupe later | deterministic, self-correcting re-runs; no double count; no manual cleanup |
 | Marts engine | dbt | more PySpark | SQL Finance can read + tested + documented |
 | Spark for matching | PySpark | dbt SQL | window dedupe + multi-tier joins clearer/faster |
 
@@ -424,7 +430,7 @@ step reads what the previous one wrote. Following one `business_date` through:
 | Step (code) | Reads | Writes | What it does |
 |-------------|-------|--------|--------------|
 | **landing** | — | `lakehouse/landing/` | the raw operator + internal files (the container generates them here on run) |
-| **bronze** (`spark/ingestion/`) | landing | `lakehouse/bronze/` | lands raw rows + ingest metadata; **`MERGE` on natural key** so re-sent corrections never duplicate |
+| **bronze** (`spark/ingestion/`) | landing | `lakehouse/bronze/` | lands raw rows + ingest metadata; operator feeds **replace the `(operator, arrival_date)` partition** (batch-deduped) so re-runs self-correct; internal CDC upserts on PK |
 | **silver** (`spark/silver/`) | bronze | `lakehouse/silver/partner_events`, `…/platform_events` | normalizes the 6–7 shapes into **one canonical schema**, converts each operator's local time → **UTC**, derives `business_date`; unions the operator-suffixed internal tables into one stream |
 | **gold — engine** (`spark/gold/`) | silver | `lakehouse/gold/fact_reconciliation_break` | the **3-tier matcher** (strong key → fallback → classify) tags every row `MATCHED` / `AMOUNT_MISMATCH` / `MISSING_ON_PLATFORM` / `MISSING_AT_PARTNER` / `ORPHAN_CHURN` / `LATE_ARRIVAL` |
 | **register** (`spark/register_tables.py`) | gold fact | local Hive metastore | registers the silver/gold Delta paths as catalog tables so dbt's session target can read them (no-op on Databricks/Unity Catalog) |

@@ -56,12 +56,49 @@ REPO = "/opt/airflow/repo"   # where the project is mounted on the worker
 
 
 def _run_module(module: str, arg_flag: str, ds: str):
-    """Invoke a pipeline module as `python -m <module> <flag> <ds>`."""
+    """Invoke a pipeline module as `python -m <module> <flag> <ds>`.
+
+    We capture the child's stdout/stderr and re-print it so the real Spark
+    error lands in the Airflow task log. With a bare `subprocess.run(..., check=True)`
+    the child's output goes to the worker's own fds (not the task log), so a
+    failure only surfaces as an opaque CalledProcessError.
+    """
     import subprocess
     import sys
 
     cmd = [sys.executable, "-m", module, arg_flag, ds]
-    subprocess.run(cmd, check=True, cwd=REPO)
+    proc = subprocess.run(cmd, cwd=REPO, capture_output=True, text=True)
+
+    # print() during task execution is captured by the Airflow task logger
+    if proc.stdout:
+        print(proc.stdout)
+    if proc.stderr:
+        print(proc.stderr)
+
+    if proc.returncode != 0:
+        raise RuntimeError(
+            f"{module} exited {proc.returncode} for {ds} — see the captured "
+            f"stdout/stderr above for the underlying error."
+        )
+
+
+def _run_register():
+    """Run `python -m spark.register_tables`, surfacing child output."""
+    import subprocess
+    import sys
+
+    proc = subprocess.run(
+        [sys.executable, "-m", "spark.register_tables"],
+        cwd=REPO, capture_output=True, text=True,
+    )
+    if proc.stdout:
+        print(proc.stdout)
+    if proc.stderr:
+        print(proc.stderr)
+    if proc.returncode != 0:
+        raise RuntimeError(
+            f"register_tables exited {proc.returncode} — see output above."
+        )
 
 
 with DAG(
@@ -124,12 +161,7 @@ with DAG(
     # holds the tables; needed for the local container metastore.)
     register = PythonOperator(
         task_id="register_tables",
-        python_callable=lambda: __import__(
-            "subprocess"
-        ).run(
-            [__import__("sys").executable, "-m", "spark.register_tables"],
-            check=True, cwd=REPO,
-        ),
+        python_callable=_run_register,
     )
 
     # dbt builds the marts AND runs tests; --vars threads the business_date so
@@ -159,8 +191,16 @@ def _run_subprocess_generate(ds: str):
     import subprocess
     import sys
 
-    subprocess.run(
+    proc = subprocess.run(
         [sys.executable, "data/synthetic/generate_data.py",
          "--business-date", ds, "--n", "300"],
-        check=True, cwd=REPO,
+        cwd=REPO, capture_output=True, text=True,
     )
+    if proc.stdout:
+        print(proc.stdout)
+    if proc.stderr:
+        print(proc.stderr)
+    if proc.returncode != 0:
+        raise RuntimeError(
+            f"generate_data exited {proc.returncode} for {ds} — see output above."
+        )

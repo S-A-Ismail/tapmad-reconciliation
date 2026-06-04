@@ -4,9 +4,11 @@
 #   Orchestration        -> Airflow webserver + scheduler (image: docker/Dockerfile.airflow)
 #   Airflow metadata     -> postgres
 #
-# All services share the ./lakehouse bind mount (a repo-local folder), so the
-# Delta tables + parquet exports persist on your machine and are visible to the
-# pipeline, dbt, and Airflow alike.
+# Storage: bronze/silver/gold Delta + parquet exports go to the data-platform
+# MinIO (s3a://${MINIO_BUCKET}/tapmad, reached as minio:9000 over the external
+# `dataplatform-net`). The ./lakehouse bind mount now holds only the local
+# landing files + the Derby metastore. Set MINIO_BUCKET / MINIO_ROOT_USER /
+# MINIO_ROOT_PASSWORD (defaults: lakehouse / minioadmin / minioadmin).
 #
 # Common commands (see Makefile for shortcuts):
 #   docker compose build
@@ -19,7 +21,14 @@ x-pipeline-build: &pipeline-build
     context: .
     dockerfile: docker/Dockerfile
   environment:
-    LAKEHOUSE_ROOT: /lakehouse
+    # Full lakehouse on the data-platform MinIO (reachable as minio:9000 on the
+    # shared external network). Set MINIO_BUCKET to your data-platform bucket.
+    LAKEHOUSE_ROOT: s3a://${MINIO_BUCKET:-lakehouse}/tapmad
+    LANDING_ROOT: /lakehouse/landing     # generator writes raw files here (local)
+    MINIO_BUCKET: ${MINIO_BUCKET:-lakehouse}
+    AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-minioadmin}
+    AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
+    AWS_REGION: us-east-1
     PYTHONPATH: /app
     # dbt: default to the local spark-session target; override to `databricks`
     # and supply creds to hit a real warehouse.
@@ -30,7 +39,10 @@ x-pipeline-build: &pipeline-build
     DATABRICKS_TOKEN: ${DATABRICKS_TOKEN:-}
   volumes:
     - .:/app                        # live code edits
-    - ./lakehouse:/lakehouse        # Delta + parquet land here on your machine
+    - ./lakehouse:/lakehouse        # local Derby metastore only (data is on MinIO)
+  networks:
+    - default
+    - dataplatform-net
 
 services:
   # ---- one-shot: run the whole pipeline for one business date --------------
@@ -75,6 +87,9 @@ services:
       dockerfile: docker/Dockerfile.airflow
     profiles: ["airflow"]
     user: "0:0"          # root: chmod works on the Docker Desktop bind mount
+    networks: &airflow-networks
+      - default
+      - dataplatform-net
     depends_on:
       postgres:
         condition: service_healthy
@@ -83,7 +98,13 @@ services:
       AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
       AIRFLOW__CORE__DAGS_FOLDER: /opt/airflow/repo/airflow/dags
       AIRFLOW__CORE__LOAD_EXAMPLES: "false"
-      LAKEHOUSE_ROOT: /lakehouse
+      # full lakehouse on MinIO (same as the pipeline/dbt services)
+      LAKEHOUSE_ROOT: s3a://${MINIO_BUCKET:-lakehouse}/tapmad
+      LANDING_ROOT: /lakehouse/landing
+      MINIO_BUCKET: ${MINIO_BUCKET:-lakehouse}
+      AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-minioadmin}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      AWS_REGION: us-east-1
       PYTHONPATH: /opt/airflow/repo
       # run as root (below) but keep HOME on the airflow user so the
       # pip-user-installed pyspark/delta/dbt + the Ivy jar cache still resolve.
@@ -110,6 +131,7 @@ services:
       dockerfile: docker/Dockerfile.airflow
     profiles: ["airflow"]
     user: "0:0"
+    networks: *airflow-networks
     depends_on:
       airflow-init:
         condition: service_completed_successfully
@@ -126,6 +148,7 @@ services:
       dockerfile: docker/Dockerfile.airflow
     profiles: ["airflow"]
     user: "0:0"
+    networks: *airflow-networks
     depends_on:
       airflow-init:
         condition: service_completed_successfully
@@ -137,3 +160,10 @@ services:
 volumes:
   pgdata:
   airflow-logs:
+
+networks:
+  default:
+  # the data-platform MinIO lives here; create it once with:
+  #   docker network create dataplatform-net
+  dataplatform-net:
+    external: true

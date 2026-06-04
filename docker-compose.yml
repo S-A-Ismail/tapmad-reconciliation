@@ -74,6 +74,7 @@ services:
       context: .
       dockerfile: docker/Dockerfile.airflow
     profiles: ["airflow"]
+    user: "0:0"          # root: chmod works on the Docker Desktop bind mount
     depends_on:
       postgres:
         condition: service_healthy
@@ -84,6 +85,9 @@ services:
       AIRFLOW__CORE__LOAD_EXAMPLES: "false"
       LAKEHOUSE_ROOT: /lakehouse
       PYTHONPATH: /opt/airflow/repo
+      # run as root (below) but keep HOME on the airflow user so the
+      # pip-user-installed pyspark/delta/dbt + the Ivy jar cache still resolve.
+      HOME: /home/airflow
       # dbt config for the DAG's dbt_build task (local spark target by default)
       DBT_PROFILES_DIR: /opt/airflow/repo/dbt
       DBT_TARGET: ${DBT_TARGET:-local}
@@ -105,6 +109,7 @@ services:
       context: .
       dockerfile: docker/Dockerfile.airflow
     profiles: ["airflow"]
+    user: "0:0"
     depends_on:
       airflow-init:
         condition: service_completed_successfully
@@ -120,6 +125,7 @@ services:
       context: .
       dockerfile: docker/Dockerfile.airflow
     profiles: ["airflow"]
+    user: "0:0"
     depends_on:
       airflow-init:
         condition: service_completed_successfully

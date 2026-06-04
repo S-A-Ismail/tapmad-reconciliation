@@ -26,7 +26,7 @@ TABLES = {
 
 
 def main():
-    spark = get_spark("register-tables")
+    spark = get_spark("register-tables", use_hive=True)
     for (db, table), path in TABLES.items():
         spark.sql(f"CREATE DATABASE IF NOT EXISTS {db}")
         # external Delta table over the path the pipeline already wrote

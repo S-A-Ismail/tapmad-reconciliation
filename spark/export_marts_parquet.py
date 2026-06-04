@@ -28,7 +28,7 @@ EXPORT_ROOT = os.path.join(paths.LAKEHOUSE_ROOT, "exports", "marts")
 
 
 def main():
-    spark = get_spark("export-marts-parquet")
+    spark = get_spark("export-marts-parquet", use_hive=True)
     for table in MARTS:
         fq = f"{MARTS_SCHEMA}.{table}"
         try:

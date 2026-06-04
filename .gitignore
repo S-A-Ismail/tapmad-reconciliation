@@ -1,5 +1,7 @@
-# local lakehouse data — generated, never committed
-lakehouse/
+# local lakehouse data — generated, never committed. The folder itself is kept
+# (via .gitkeep) so the bind-mount target exists in the repo.
+lakehouse/*
+!lakehouse/.gitkeep
 
 # python
 __pycache__/

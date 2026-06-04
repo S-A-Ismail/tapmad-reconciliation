@@ -4,8 +4,9 @@
 #   Orchestration        -> Airflow webserver + scheduler (image: docker/Dockerfile.airflow)
 #   Airflow metadata     -> postgres
 #
-# All services share one named volume `lakehouse`, so the Delta tables written
-# by the Spark jobs are visible to dbt and Airflow alike.
+# All services share the ./lakehouse bind mount (a repo-local folder), so the
+# Delta tables + parquet exports persist on your machine and are visible to the
+# pipeline, dbt, and Airflow alike.
 #
 # Common commands (see Makefile for shortcuts):
 #   docker compose build

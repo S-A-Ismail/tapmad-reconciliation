@@ -73,12 +73,39 @@ def overwrite_partition(
     Delta deletes the old 2024-01-15 data and writes the new in one atomic
     commit. Every other date is left exactly as it was — which is precisely
     what lets Finance re-run a day without disturbing a closed month.
+
+    `replaceWhere` requires an existing, compatibly-partitioned table and CANNOT
+    be combined with `overwriteSchema`. So we only use it for steady-state,
+    in-place replaces; the first write (or a corrupt/incompatibly-partitioned
+    table left by an aborted run) is handled with a clean full overwrite.
     """
+    spark = df.sparkSession
+
+    def _full_overwrite() -> None:
+        writer = (
+            df.write.format("delta").mode("overwrite").option("overwriteSchema", "true")
+        )
+        if partition_by:
+            writer = writer.partitionBy(*partition_by)
+        writer.save(path)
+
+    # First ever write: establish the schema + partitioning.
+    if not table_exists(spark, path):
+        _full_overwrite()
+        return
+
+    # Existing table whose partitioning doesn't match (e.g. an empty/corrupt
+    # table from an earlier failed run) -> reset it; replaceWhere can't.
+    current_parts = (
+        DeltaTable.forPath(spark, path).detail().select("partitionColumns").first()[0]
+    )
+    if list(current_parts or []) != list(partition_by or []):
+        _full_overwrite()
+        return
+
+    # Steady state: atomic per-partition replace.
     writer = (
-        df.write.format("delta")
-        .mode("overwrite")
-        .option("replaceWhere", replace_where)
-        .option("overwriteSchema", "true")
+        df.write.format("delta").mode("overwrite").option("replaceWhere", replace_where)
     )
     if partition_by:
         writer = writer.partitionBy(*partition_by)

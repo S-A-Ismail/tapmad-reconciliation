@@ -54,16 +54,13 @@ def get_spark(
         builder = builder.config("spark.sql.catalogImplementation", "in-memory")
 
     # configure_spark_with_delta_pip injects the delta-spark jars when running
-    # locally via pip. IMPORTANT: it *overwrites* spark.jars.packages, so any
-    # extra jars (hadoop-aws for S3A/MinIO) must be passed here via
-    # extra_packages -- a hadoop-aws line in spark-defaults.conf alone is
-    # clobbered by this call and never loaded.
+    # locally via pip. The S3A jars (hadoop-aws + aws-sdk bundle) are baked into
+    # pyspark's jars dir at image build, so they're NOT requested here -- adding
+    # them to spark.jars.packages would force a flaky ~280MB Ivy download.
     try:
         from delta import configure_spark_with_delta_pip
 
-        builder = configure_spark_with_delta_pip(
-            builder, extra_packages=["org.apache.hadoop:hadoop-aws:3.3.4"]
-        )
+        builder = configure_spark_with_delta_pip(builder)
     except Exception:
         # On Databricks `delta` python pip helper isn't needed.
         pass

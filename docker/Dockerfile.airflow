@@ -15,17 +15,17 @@ USER airflow
 COPY docker/requirements-pipeline.txt /tmp/requirements-pipeline.txt
 RUN pip install --no-cache-dir -r /tmp/requirements-pipeline.txt
 
-# bake the S3A jars into pyspark's jars dir (reliable build-time download;
-# avoids the flaky ~280MB Ivy fetch at run time)
+# bake ALL required jars (Delta + S3A) into pyspark's jars dir -> zero Ivy at
+# run time. (antlr4-runtime is already in pyspark/jars.)
 RUN PYSPARK_JARS="$(python -c 'import os, pyspark; print(os.path.join(os.path.dirname(pyspark.__file__), "jars"))')" \
+    && curl -fsSL -o "$PYSPARK_JARS/delta-spark_2.12-3.2.0.jar" \
+         https://repo1.maven.org/maven2/io/delta/delta-spark_2.12/3.2.0/delta-spark_2.12-3.2.0.jar \
+    && curl -fsSL -o "$PYSPARK_JARS/delta-storage-3.2.0.jar" \
+         https://repo1.maven.org/maven2/io/delta/delta-storage/3.2.0/delta-storage-3.2.0.jar \
     && curl -fsSL -o "$PYSPARK_JARS/hadoop-aws-3.3.4.jar" \
          https://repo1.maven.org/maven2/org/apache/hadoop/hadoop-aws/3.3.4/hadoop-aws-3.3.4.jar \
     && curl -fsSL -o "$PYSPARK_JARS/aws-java-sdk-bundle-1.12.262.jar" \
          https://repo1.maven.org/maven2/com/amazonaws/aws-java-sdk-bundle/1.12.262/aws-java-sdk-bundle-1.12.262.jar
-
-# warm Delta jar cache as the airflow user
-COPY docker/warm_cache.py /tmp/warm_cache.py
-RUN python /tmp/warm_cache.py
 
 ENV SPARK_CONF_DIR=/opt/sparkconf
 COPY --chown=airflow:0 docker/spark-defaults.conf /opt/sparkconf/spark-defaults.conf

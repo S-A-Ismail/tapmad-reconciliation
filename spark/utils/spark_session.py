@@ -49,20 +49,13 @@ def get_spark(
     )
 
     if not use_hive:
-        # Override the hive setting from spark-defaults.conf so no Derby
-        # metastore is booted (builder config takes precedence over the file).
+        # Use an in-memory catalog so path-only jobs (bronze/silver/gold) don't
+        # connect to the Hive metastore at all -- they read/write Delta by path.
         builder = builder.config("spark.sql.catalogImplementation", "in-memory")
 
-    # configure_spark_with_delta_pip injects the delta-spark jars when running
-    # locally via pip. The S3A jars (hadoop-aws + aws-sdk bundle) are baked into
-    # pyspark's jars dir at image build, so they're NOT requested here -- adding
-    # them to spark.jars.packages would force a flaky ~280MB Ivy download.
-    try:
-        from delta import configure_spark_with_delta_pip
-
-        builder = configure_spark_with_delta_pip(builder)
-    except Exception:
-        # On Databricks `delta` python pip helper isn't needed.
-        pass
-
+    # NOTE: all jars (delta-spark, delta-storage, hadoop-aws, aws-sdk) are baked
+    # into pyspark's jars dir at image build, so we do NOT call
+    # configure_spark_with_delta_pip / set spark.jars.packages -- that would
+    # trigger Ivy resolution at run time, which has proven flaky/cache-corrupting.
+    # The Delta SQL extension + catalog are configured above and in spark-defaults.
     return builder.getOrCreate()

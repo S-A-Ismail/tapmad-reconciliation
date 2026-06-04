@@ -18,20 +18,20 @@ WORKDIR /app
 COPY docker/requirements-pipeline.txt /tmp/requirements-pipeline.txt
 RUN pip install --no-cache-dir -r /tmp/requirements-pipeline.txt
 
-# 1b. bake the S3A jars (hadoop-aws + matching aws-sdk bundle) straight into
-#     pyspark's jars dir. Build-time download is reliable; this avoids the
-#     flaky ~280MB Ivy download at run time (and the HOME/ivy-cache mismatch).
+# 1b. bake ALL required jars (Delta + S3A) into pyspark's jars dir, so the
+#     container does ZERO Ivy resolution at run time -- no flaky downloads, no
+#     corrupt-cache failures. (antlr4-runtime is already in pyspark/jars.)
 RUN PYSPARK_JARS="$(python -c 'import os, pyspark; print(os.path.join(os.path.dirname(pyspark.__file__), "jars"))')" \
+    && curl -fsSL -o "$PYSPARK_JARS/delta-spark_2.12-3.2.0.jar" \
+         https://repo1.maven.org/maven2/io/delta/delta-spark_2.12/3.2.0/delta-spark_2.12-3.2.0.jar \
+    && curl -fsSL -o "$PYSPARK_JARS/delta-storage-3.2.0.jar" \
+         https://repo1.maven.org/maven2/io/delta/delta-storage/3.2.0/delta-storage-3.2.0.jar \
     && curl -fsSL -o "$PYSPARK_JARS/hadoop-aws-3.3.4.jar" \
          https://repo1.maven.org/maven2/org/apache/hadoop/hadoop-aws/3.3.4/hadoop-aws-3.3.4.jar \
     && curl -fsSL -o "$PYSPARK_JARS/aws-java-sdk-bundle-1.12.262.jar" \
          https://repo1.maven.org/maven2/com/amazonaws/aws-java-sdk-bundle/1.12.262/aws-java-sdk-bundle-1.12.262.jar
 
-# 2. warm the Delta jar cache (no SPARK_CONF_DIR yet, so no metastore needed)
-COPY docker/warm_cache.py /tmp/warm_cache.py
-RUN python /tmp/warm_cache.py
-
-# 3. bake spark-defaults (Delta + local Hive metastore on the shared volume)
+# 2. bake spark-defaults (Delta extension + shared HMS + S3A)
 ENV SPARK_CONF_DIR=/opt/sparkconf
 COPY docker/spark-defaults.conf /opt/sparkconf/spark-defaults.conf
 

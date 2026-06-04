@@ -161,8 +161,11 @@ with DAG(
             "dbt build "
             "--select staging intermediate marts "
             "--target ${DBT_TARGET:-local} "
-            "--vars '{business_date: " + ds
-            + ", dbt_incremental_strategy: ${DBT_INC_STRATEGY:-insert_overwrite}}'"
+            # double quotes so bash expands ${DBT_INC_STRATEGY} (single quotes
+            # would pass the literal ${...} to dbt -> invalid YAML). Braces stay
+            # literal inside double quotes (no bash brace expansion).
+            '--vars "{business_date: ' + ds
+            + ', dbt_incremental_strategy: ${DBT_INC_STRATEGY:-insert_overwrite}}"'
         ),
     )
 

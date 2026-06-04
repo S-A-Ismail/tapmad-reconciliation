@@ -84,6 +84,14 @@ def ingest_operator(spark, operator_code: str, arrival_date: str) -> int:
         .withColumn("_source_format", F.lit(cfg["file_format"]))
     )
 
+    # An operator can send the SAME partner_txn_id twice in one file (duplicate
+    # re-send). Dedup on the natural key before the MERGE: a within-batch
+    # duplicate would otherwise survive the first (plain) write and double-count
+    # downstream. (MERGE also can't accept duplicate source keys.)
+    bronze = bronze.dropDuplicates(
+        ["operator_code", "partner_txn_id", "file_arrival_date"]
+    )
+
     merge_upsert(
         spark,
         bronze,

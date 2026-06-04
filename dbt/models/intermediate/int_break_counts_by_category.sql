@@ -10,17 +10,17 @@ select
     operator_code,
 
     -- healthy
-    count_if(recon_status = 'MATCHED')              as matched_count,
-    count_if(recon_status = 'LATE_ARRIVAL')         as late_arrival_count,
+    count(case when recon_status = 'MATCHED' then 1 end)              as matched_count,
+    count(case when recon_status = 'LATE_ARRIVAL' then 1 end)         as late_arrival_count,
 
     -- break categories the case study names explicitly
-    count_if(recon_status = 'AMOUNT_MISMATCH')      as amount_mismatch_count,
-    count_if(recon_status = 'MISSING_ON_PLATFORM')  as missing_on_platform_count,
-    count_if(recon_status = 'MISSING_AT_PARTNER')   as missing_at_partner_count,
-    count_if(recon_status = 'ORPHAN_CHURN')         as orphan_churn_count,
+    count(case when recon_status = 'AMOUNT_MISMATCH' then 1 end)      as amount_mismatch_count,
+    count(case when recon_status = 'MISSING_ON_PLATFORM' then 1 end)  as missing_on_platform_count,
+    count(case when recon_status = 'MISSING_AT_PARTNER' then 1 end)   as missing_at_partner_count,
+    count(case when recon_status = 'ORPHAN_CHURN' then 1 end)         as orphan_churn_count,
 
     -- any non-matched, non-late row is a "break" Finance must look at
-    count_if(recon_status not in ('MATCHED', 'LATE_ARRIVAL')) as break_count,
+    count(case when recon_status not in ('MATCHED', 'LATE_ARRIVAL') then 1 end) as break_count,
 
     -- amount roll-ups straight off the fact (both sides carried per row)
     sum(partner_amount)   as partner_amount_total,

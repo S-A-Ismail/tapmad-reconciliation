@@ -28,7 +28,10 @@ models:
       +materialized: view
       +schema: staging
     intermediate:
-      +materialized: ephemeral
+      # view (not ephemeral): dbt-spark's session method handles concrete
+      # relations far more reliably than inlined ephemeral CTEs.
+      +materialized: view
+      +schema: staging
     marts:
       +materialized: incremental
       +file_format: delta

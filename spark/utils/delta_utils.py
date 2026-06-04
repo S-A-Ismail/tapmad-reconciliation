@@ -82,8 +82,13 @@ def overwrite_partition(
     spark = df.sparkSession
 
     def _full_overwrite() -> None:
+        # Force STATIC partition overwrite for the full create/reset: the
+        # session runs in dynamic mode (for dbt's insert_overwrite), and Delta
+        # forbids overwriteSchema together with dynamic partition overwrite.
         writer = (
-            df.write.format("delta").mode("overwrite").option("overwriteSchema", "true")
+            df.write.format("delta").mode("overwrite")
+            .option("overwriteSchema", "true")
+            .option("partitionOverwriteMode", "static")
         )
         if partition_by:
             writer = writer.partitionBy(*partition_by)

@@ -55,50 +55,37 @@ GENERATE_SYNTHETIC = True
 REPO = "/opt/airflow/repo"   # where the project is mounted on the worker
 
 
-def _run_module(module: str, arg_flag: str, ds: str):
-    """Invoke a pipeline module as `python -m <module> <flag> <ds>`.
-
-    We capture the child's stdout/stderr and re-print it so the real Spark
-    error lands in the Airflow task log. With a bare `subprocess.run(..., check=True)`
-    the child's output goes to the worker's own fds (not the task log), so a
-    failure only surfaces as an opaque CalledProcessError.
+def _stream(argv: list[str], label: str):
+    """Run a subprocess and STREAM its stdout+stderr line-by-line into the
+    Airflow task log as it happens (so long-running / hanging jobs show output
+    live, instead of only after the process exits like capture_output does).
     """
     import subprocess
+
+    proc = subprocess.Popen(
+        argv, cwd=REPO,
+        stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+        text=True, bufsize=1,
+    )
+    for line in proc.stdout:
+        print(line, end="")
+    proc.wait()
+    if proc.returncode != 0:
+        raise RuntimeError(f"{label} exited {proc.returncode} — see output above.")
+
+
+def _run_module(module: str, arg_flag: str, ds: str):
+    """Invoke a pipeline module as `python -m <module> <flag> <ds>`."""
     import sys
 
-    cmd = [sys.executable, "-m", module, arg_flag, ds]
-    proc = subprocess.run(cmd, cwd=REPO, capture_output=True, text=True)
-
-    # print() during task execution is captured by the Airflow task logger
-    if proc.stdout:
-        print(proc.stdout)
-    if proc.stderr:
-        print(proc.stderr)
-
-    if proc.returncode != 0:
-        raise RuntimeError(
-            f"{module} exited {proc.returncode} for {ds} — see the captured "
-            f"stdout/stderr above for the underlying error."
-        )
+    _stream([sys.executable, "-m", module, arg_flag, ds], f"{module} ({ds})")
 
 
 def _run_register():
-    """Run `python -m spark.register_tables`, surfacing child output."""
-    import subprocess
+    """Run `python -m spark.register_tables`, streaming child output."""
     import sys
 
-    proc = subprocess.run(
-        [sys.executable, "-m", "spark.register_tables"],
-        cwd=REPO, capture_output=True, text=True,
-    )
-    if proc.stdout:
-        print(proc.stdout)
-    if proc.stderr:
-        print(proc.stderr)
-    if proc.returncode != 0:
-        raise RuntimeError(
-            f"register_tables exited {proc.returncode} — see output above."
-        )
+    _stream([sys.executable, "-m", "spark.register_tables"], "register_tables")
 
 
 with DAG(
@@ -188,19 +175,10 @@ with DAG(
 
 
 def _run_subprocess_generate(ds: str):
-    import subprocess
     import sys
 
-    proc = subprocess.run(
+    _stream(
         [sys.executable, "data/synthetic/generate_data.py",
          "--business-date", ds, "--n", "300"],
-        cwd=REPO, capture_output=True, text=True,
+        f"generate_data ({ds})",
     )
-    if proc.stdout:
-        print(proc.stdout)
-    if proc.stderr:
-        print(proc.stderr)
-    if proc.returncode != 0:
-        raise RuntimeError(
-            f"generate_data exited {proc.returncode} for {ds} — see output above."
-        )

@@ -29,10 +29,12 @@ def main():
     spark = get_spark("register-tables", use_hive=True)
     for (db, table), path in TABLES.items():
         spark.sql(f"CREATE DATABASE IF NOT EXISTS {db}")
-        # external Delta table over the path the pipeline already wrote
-        spark.sql(
-            f"CREATE TABLE IF NOT EXISTS {db}.{table} USING DELTA LOCATION '{path}'"
-        )
+        # DROP + CREATE (not CREATE IF NOT EXISTS): a stale registration from an
+        # earlier run can point at an old location / empty schema, and IF NOT
+        # EXISTS would keep it. Dropping an EXTERNAL Delta table removes only the
+        # catalog entry, never the data, so re-registering is always safe.
+        spark.sql(f"DROP TABLE IF EXISTS {db}.{table}")
+        spark.sql(f"CREATE TABLE {db}.{table} USING DELTA LOCATION '{path}'")
         print(f"[register] {db}.{table} -> {path}")
 
 

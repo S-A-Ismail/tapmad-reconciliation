@@ -23,6 +23,7 @@ Run:
 import argparse
 
 from pyspark.sql import functions as F
+from pyspark.sql.window import Window
 
 from spark.config import paths
 from spark.config.operator_config import (
@@ -172,6 +173,19 @@ def main(business_date: str):
     # job is normally run for "today", and the backfill DAG re-runs older dates
     # explicitly. Here we filter to the target date for a clean partition swap.
     union = union.where(F.col("business_date") == F.lit(business_date))
+
+    # Collapse re-send corrections: a transaction re-delivered on a later day
+    # carries the SAME partner_txn_id under a newer file_arrival_date. Keep only
+    # the latest arrival per (operator_code, partner_txn_id) so a correction
+    # supersedes the original instead of double-counting it downstream.
+    _latest = Window.partitionBy("operator_code", "partner_txn_id").orderBy(
+        F.col("file_arrival_date").desc_nulls_last()
+    )
+    union = (
+        union.withColumn("_rn", F.row_number().over(_latest))
+        .where(F.col("_rn") == 1)
+        .drop("_rn")
+    )
 
     # data quality flag surfaced downstream, never silently dropped
     unknown = union.where(F.col("txn_type") == "unknown").count()

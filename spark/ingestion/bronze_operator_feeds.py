@@ -9,9 +9,12 @@ Design notes:
     keeps each operator's raw columns (prefixed) plus a normalized core, so we
     never lose source fidelity for audit/debugging.
   * One generic job driven by OPERATOR_CONFIG, not 7 copies.
-  * MERGE on (operator_code, partner_txn_id, file_arrival_date) so that when an
-    operator re-sends the last 3 days as corrections, rows update in place.
-    Bronze is therefore exactly-once at the natural-key grain.
+  * IDEMPOTENT by partition: each (operator_code, file_arrival_date) partition is
+    fully REPLACED on ingest (replaceWhere), after de-duping the batch on the
+    natural key. So re-running any arrival date is deterministic and
+    self-correcting -- it can never accumulate duplicates, and there's never a
+    need to manually clean state. (A file MERGE-append couldn't remove rows a
+    prior buggy run left behind; a partition replace can.)
 
 Run:
     python -m spark.ingestion.bronze_operator_feeds --arrival-date 2024-01-15
@@ -25,7 +28,7 @@ from pyspark.sql import functions as F
 
 from spark.config import paths
 from spark.config.operator_config import OPERATOR_CONFIG
-from spark.utils.delta_utils import merge_upsert
+from spark.utils.delta_utils import overwrite_partition
 from spark.utils.spark_session import get_spark
 
 
@@ -84,23 +87,26 @@ def ingest_operator(spark, operator_code: str, arrival_date: str) -> int:
         .withColumn("_source_format", F.lit(cfg["file_format"]))
     )
 
-    # An operator can send the SAME partner_txn_id twice in one file (duplicate
-    # re-send). Dedup on the natural key before the MERGE: a within-batch
-    # duplicate would otherwise survive the first (plain) write and double-count
-    # downstream. (MERGE also can't accept duplicate source keys.)
+    # De-dupe the batch on the natural key (an operator can send the same
+    # partner_txn_id twice in one file).
     bronze = bronze.dropDuplicates(
         ["operator_code", "partner_txn_id", "file_arrival_date"]
     )
 
-    merge_upsert(
-        spark,
+    # Idempotent: replace exactly this operator's partition for this arrival
+    # date. Re-running fully rewrites it from the de-duped batch, so it can
+    # never accumulate duplicates and never needs manual cleanup.
+    overwrite_partition(
         bronze,
         paths.BRONZE_OPERATOR_FEEDS,
-        merge_keys=["operator_code", "partner_txn_id", "file_arrival_date"],
+        replace_where=(
+            f"operator_code = '{operator_code}' "
+            f"AND file_arrival_date = '{arrival_date}'"
+        ),
         partition_by=["operator_code", "file_arrival_date"],
     )
     n = bronze.count()
-    print(f"[bronze] {operator_code}: merged {n} rows for {arrival_date}")
+    print(f"[bronze] {operator_code}: wrote {n} rows for {arrival_date}")
     return n
 
 

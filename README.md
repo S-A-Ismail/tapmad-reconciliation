@@ -433,8 +433,8 @@ commands. To point dbt at Databricks instead of the local Spark, set
   table, written by `spark.export_parquet` and `spark.export_marts_parquet`).
 - **Local** (`./lakehouse/landing/`) — the raw landing files the generator
   writes (git-ignored).
-- **Shared HMS** — the `silver.*`, `gold.*` and `recon_*` table definitions, so
-  the same tables are queryable from **Trino / DBeaver**.
+- **Shared HMS** — the `bronze.*`, `silver.*`, `gold.*` and `recon_*` table
+  definitions, so every layer is queryable from **Trino / DBeaver**.
 
 ### How the data is transformed
 
@@ -447,7 +447,7 @@ Each step reads what the previous one wrote (on MinIO). Following one
 | **bronze** (`spark/ingestion/`) | landing | `…/tapmad/bronze/` | lands raw rows + ingest metadata; operator feeds **replace the `(operator, arrival_date)` partition** (batch-deduped) so re-runs self-correct; internal CDC upserts on PK |
 | **silver** (`spark/silver/`) | bronze | `…/tapmad/silver/{partner,platform}_events` | normalizes the 6 shapes into **one canonical schema**, converts each operator's local time → **UTC**, derives `business_date`, unions the operator-suffixed internal tables, and keeps the latest arrival per `partner_txn_id` |
 | **gold — engine** (`spark/gold/`) | silver | `…/tapmad/gold/fact_reconciliation_break` | the **3-tier matcher** (strong key → fallback → classify) tags every row `MATCHED` / `AMOUNT_MISMATCH` / `MISSING_ON_PLATFORM` / `MISSING_AT_PARTNER` / `ORPHAN_CHURN` / `LATE_ARRIVAL` |
-| **register** (`spark/register_tables.py`) | gold fact | shared HMS (`thrift://app:9083`) | registers the silver/gold Delta paths as catalog tables so dbt — and Trino — can read them (no-op on Databricks/Unity Catalog) |
+| **register** (`spark/register_tables.py`) | bronze + silver + gold | shared HMS (`thrift://app:9083`) | registers every layer's Delta path as a catalog table so dbt — and Trino — can read them (no-op on Databricks/Unity Catalog) |
 | **gold — marts** (`dbt/`) | silver + gold fact | `reconciliation_daily`, `revenue_monthly_close` | per-day/per-operator summary Finance opens each morning + the monthly recognized-revenue close; dbt tests assert no double-counting and matched-row balance |
 
 The `pipeline` container ends by printing a count of rows **per `recon_status`**

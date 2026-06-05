@@ -7,7 +7,8 @@
 # Storage: bronze/silver/gold Delta + parquet exports go to the data-platform
 # MinIO (s3a://${MINIO_BUCKET}/tapmad, reached as minio:9000 over the external
 # `dataplatform-net`). The ./lakehouse bind mount now holds only the local
-# landing files + the Derby metastore. Set MINIO_BUCKET / MINIO_ROOT_USER /
+# landing files (the metastore is the shared HMS, the warehouse is on MinIO).
+# Set MINIO_BUCKET / MINIO_ROOT_USER /
 # MINIO_ROOT_PASSWORD (defaults: lakehouse / minioadmin / minioadmin).
 #
 # Common commands (see Makefile for shortcuts):
@@ -39,7 +40,7 @@ x-pipeline-build: &pipeline-build
     DATABRICKS_TOKEN: ${DATABRICKS_TOKEN:-}
   volumes:
     - .:/app                        # live code edits
-    - ./lakehouse:/lakehouse        # local Derby metastore only (data is on MinIO)
+    - ./lakehouse:/lakehouse        # local landing files only (data is on MinIO)
   networks:
     - default
     - dataplatform-net

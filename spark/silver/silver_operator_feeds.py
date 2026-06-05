@@ -26,10 +26,7 @@ from pyspark.sql import functions as F
 from pyspark.sql.window import Window
 
 from spark.config import paths
-from spark.config.operator_config import (
-    CANONICAL_TXN_TYPES,
-    OPERATOR_CONFIG,
-)
+from spark.config.operator_config import OPERATOR_CONFIG
 from spark.utils.delta_utils import overwrite_partition
 from spark.utils.spark_session import get_spark
 

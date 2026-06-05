@@ -27,7 +27,7 @@ only storage paths and the orchestrator wrapper change.
 
 ## 1. How I interpreted the problem
 
-The brief is really three problems wearing one coat:
+The brief is really three problems in one:
 
 1. **Integration** — 6–7 operator feeds, each a different shape/timezone/
    currency, plus a per-operator-suffixed internal OLTP. Get them into one
@@ -97,6 +97,12 @@ control (timezone edge cases, multi-tier joins, window dedupe) — clearer and
 faster in PySpark. The marts are SQL that **Finance can read, test, and trust**,
 so dbt owns them with built-in tests and docs. This hybrid is exactly how I'd
 run it on Databricks.
+
+**Where it lives.** Bronze/silver/gold are Delta tables in **MinIO** (S3A), and
+their definitions register in a **shared Hive Metastore**, so Trino/DBeaver hit
+the same catalog. Landing files stay on local disk. This was local disk + an
+embedded metastore to begin with; moving to MinIO + HMS was a config change in
+`spark-defaults.conf` and `paths.py`, no pipeline logic touched.
 
 ### Data model (ERD)
 
@@ -287,8 +293,7 @@ back to source**.
 
 ## 5. Trust — idempotency, late arrivals, restatement
 
-These three requirements are the difference between a demo and something
-Finance can close books on.
+These three are what make it usable for a real book close, not just a demo.
 
 **Idempotency (operators re-send 3 days of corrections).**
 - Bronze operator feeds **replace the `(operator, file_arrival_date)` partition**
@@ -359,24 +364,37 @@ imperfect rows.
 
 ## 8. Quick start (Docker)
 
-Everything runs in containers — no local Python, Java, or Spark needed. Spark
-runs in `local[*]` mode inside the image, and dbt builds the marts against that
-same in-container Spark (no warehouse required). **Only prerequisite: Docker +
-Docker Compose.**
+Everything runs in containers. Compute is Spark in `local[*]` inside the image.
+Bronze/silver/gold land in **MinIO** (over S3A), and the tables are registered
+in a **shared Hive Metastore** — both come from the data-platform stack, so that
+stack has to be up first.
+
+### Prerequisites
+
+- Docker + Docker Compose.
+- The **data-platform** stack running, with its `minio` and `app` (Hive
+  Metastore) services on the shared `dataplatform-net` network. Create the
+  network once:
+  ```bash
+  docker network create dataplatform-net
+  ```
+- `MINIO_BUCKET` set to your bucket (default `lakehouse`). If your MinIO creds
+  aren't `minioadmin/minioadmin`, set `MINIO_ROOT_USER` / `MINIO_ROOT_PASSWORD`.
 
 ### The data is already generated
 
-The raw inputs are committed under [`data/sample/`](data/sample), so you don't
-have to generate anything to get started. They were produced once with:
+Sample landing data is committed under [`data/sample/`](data/sample) so there's
+something to look at without running anything. It was made with:
 
 ```bash
 LAKEHOUSE_ROOT=data/sample python data/synthetic/generate_data.py \
   --business-date 2024-01-15 --n 150
 ```
 
-The generator uses a fixed random seed, so this is deterministic — the
-container regenerates the *identical* dataset when it runs, so what you inspect
-in `data/sample/` is exactly what the pipeline processes.
+The generator uses a fixed seed, so it's deterministic — the container
+regenerates the same files when it runs. Landing stays **local** (the generator
+writes with plain `open()`, which can't write to S3A); everything downstream
+goes to MinIO.
 
 **What's in the landing data:**
 
@@ -388,52 +406,48 @@ in `data/sample/` is exactly what the pipeline processes.
 ### Run it
 
 ```bash
-# 1. build the images (first run pulls base images + caches the Delta jars)
-docker compose build
+docker compose build       # bakes the Delta + S3A jars into the image
 
-# 2. run the pipeline: generate -> ingest -> normalize -> reconcile (prints a summary)
-docker compose run --rm pipeline
+# full Airflow run — UI at http://localhost:8080 (airflow / airflow):
+MINIO_BUCKET=lakehouse docker compose --profile airflow up -d
+#   then trigger the `tapmad_reconciliation_daily` DAG
 
-# 3. build the Finance marts + data tests (dbt on the in-container Spark)
-docker compose run --rm dbt
-
-# optional: the full Airflow experience (UI at http://localhost:8080, airflow/airflow)
-docker compose --profile airflow up -d
+# or one-shot, without Airflow:
+MINIO_BUCKET=lakehouse docker compose run --rm pipeline   # generate -> bronze -> silver -> gold
+MINIO_BUCKET=lakehouse docker compose run --rm dbt        # register tables + marts + tests
 ```
 
-`make build` / `make pipeline` / `make dbt` / `make airflow-up` are shortcuts for
-the same commands. To point dbt at a real warehouse instead of local Spark, set
+`make build` / `make pipeline` / `make dbt` / `make airflow-up` wrap the same
+commands. To point dbt at Databricks instead of the local Spark, set
 `DBT_TARGET=databricks` plus `DATABRICKS_HOST` / `DATABRICKS_HTTP_PATH` /
 `DATABRICKS_TOKEN`.
 
+> `docker/spark-defaults.conf` and the Dockerfiles are baked into the image — if
+> you change one of those, rebuild (`docker compose build`). Code, SQL, the DAG
+> and `docker-compose.yml` are mounted, so they take effect on the next run.
+
 ### Where the output lands
 
-`lakehouse/` is bind-mounted to your machine, so every layer is written to
-`./lakehouse/` as the pipeline runs:
-
-- `./lakehouse/bronze|silver|gold/` — the Delta tables (parquet part-files + a
-  `_delta_log/`).
-- `./lakehouse/exports/<layer>/<table>/` — clean single-file **Parquet**
-  snapshots of each bronze / silver / gold table, written by the final
-  `spark.export_parquet` step for easy local inspection.
-- `./lakehouse/exports/marts/<table>/` — Parquet snapshots of the dbt marts
-  (`reconciliation_daily`, `revenue_monthly_close`), written by the `dbt`
-  service after `dbt build`.
-
-(`lakehouse/` is git-ignored — it's generated output, not committed.)
+- **MinIO** (`s3a://${MINIO_BUCKET}/tapmad/`) — `bronze/`, `silver/`, `gold/`
+  Delta tables, plus `exports/` (single-file **Parquet** snapshots of every
+  table, written by `spark.export_parquet` and `spark.export_marts_parquet`).
+- **Local** (`./lakehouse/landing/`) — the raw landing files the generator
+  writes (git-ignored).
+- **Shared HMS** — the `silver.*`, `gold.*` and `recon_*` table definitions, so
+  the same tables are queryable from **Trino / DBeaver**.
 
 ### How the data is transformed
 
-Both `pipeline` and `dbt` containers share one `lakehouse` Delta volume, so each
-step reads what the previous one wrote. Following one `business_date` through:
+Each step reads what the previous one wrote (on MinIO). Following one
+`business_date` through:
 
 | Step (code) | Reads | Writes | What it does |
 |-------------|-------|--------|--------------|
-| **landing** | — | `lakehouse/landing/` | the raw operator + internal files (the container generates them here on run) |
-| **bronze** (`spark/ingestion/`) | landing | `lakehouse/bronze/` | lands raw rows + ingest metadata; operator feeds **replace the `(operator, arrival_date)` partition** (batch-deduped) so re-runs self-correct; internal CDC upserts on PK |
-| **silver** (`spark/silver/`) | bronze | `lakehouse/silver/partner_events`, `…/platform_events` | normalizes the 6–7 shapes into **one canonical schema**, converts each operator's local time → **UTC**, derives `business_date`; unions the operator-suffixed internal tables into one stream |
-| **gold — engine** (`spark/gold/`) | silver | `lakehouse/gold/fact_reconciliation_break` | the **3-tier matcher** (strong key → fallback → classify) tags every row `MATCHED` / `AMOUNT_MISMATCH` / `MISSING_ON_PLATFORM` / `MISSING_AT_PARTNER` / `ORPHAN_CHURN` / `LATE_ARRIVAL` |
-| **register** (`spark/register_tables.py`) | gold fact | local Hive metastore | registers the silver/gold Delta paths as catalog tables so dbt's session target can read them (no-op on Databricks/Unity Catalog) |
+| **landing** | — | local `./lakehouse/landing/` | the raw operator + internal files (generated on run) |
+| **bronze** (`spark/ingestion/`) | landing | `…/tapmad/bronze/` | lands raw rows + ingest metadata; operator feeds **replace the `(operator, arrival_date)` partition** (batch-deduped) so re-runs self-correct; internal CDC upserts on PK |
+| **silver** (`spark/silver/`) | bronze | `…/tapmad/silver/{partner,platform}_events` | normalizes the 6 shapes into **one canonical schema**, converts each operator's local time → **UTC**, derives `business_date`, unions the operator-suffixed internal tables, and keeps the latest arrival per `partner_txn_id` |
+| **gold — engine** (`spark/gold/`) | silver | `…/tapmad/gold/fact_reconciliation_break` | the **3-tier matcher** (strong key → fallback → classify) tags every row `MATCHED` / `AMOUNT_MISMATCH` / `MISSING_ON_PLATFORM` / `MISSING_AT_PARTNER` / `ORPHAN_CHURN` / `LATE_ARRIVAL` |
+| **register** (`spark/register_tables.py`) | gold fact | shared HMS (`thrift://app:9083`) | registers the silver/gold Delta paths as catalog tables so dbt — and Trino — can read them (no-op on Databricks/Unity Catalog) |
 | **gold — marts** (`dbt/`) | silver + gold fact | `reconciliation_daily`, `revenue_monthly_close` | per-day/per-operator summary Finance opens each morning + the monthly recognized-revenue close; dbt tests assert no double-counting and matched-row balance |
 
 The `pipeline` container ends by printing a count of rows **per `recon_status`**
@@ -488,7 +502,7 @@ tapmad-reconciliation/
 │   ├── ingestion/                   ← bronze: operator feeds + internal CDC
 │   ├── silver/                      ← canonical normalization + union
 │   ├── gold/reconciliation_engine.py← THE matching decision tree
-│   └── register_tables.py           ← expose Delta paths to dbt (local metastore)
+│   └── register_tables.py           ← register Delta tables in the shared HMS
 ├── dbt/
 │   ├── models/staging/              ← typed views over silver + gold fact
 │   ├── models/intermediate/         ← pivots + independent source counts

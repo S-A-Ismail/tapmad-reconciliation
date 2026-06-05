@@ -7,14 +7,15 @@ The single most important operational property of this pipeline is:
 
 Two patterns make that true:
 
-1. `merge_upsert` — for the BRONZE layer, where operators re-send the same
-   rows as "corrections". We MERGE on the natural key so a re-sent row
-   updates in place instead of appending a duplicate.
+1. `overwrite_partition` — for operator feeds (bronze) and silver/gold. We use
+   Delta's `replaceWhere` to atomically swap out exactly the partition(s) we
+   recomputed (one operator+arrival_date, or one business_date), leaving every
+   other partition untouched. Re-running fully rewrites the partition from the
+   batch, so it self-corrects and never accumulates duplicates.
 
-2. `overwrite_partition` — for SILVER / GOLD, which are pure functions of the
-   layer below. We use Delta's `replaceWhere` to atomically swap out exactly
-   the partition(s) we recomputed (e.g. one business_date), leaving every
-   other day untouched. Re-running a day = deterministic replace.
+2. `merge_upsert` — for the internal CDC tables (bronze), which are keyed on a
+   real primary key. We MERGE on the PK so a re-delivered change updates in
+   place instead of appending a duplicate.
 """
 
 from typing import Sequence
@@ -111,20 +112,6 @@ def overwrite_partition(
     # Steady state: atomic per-partition replace.
     writer = (
         df.write.format("delta").mode("overwrite").option("replaceWhere", replace_where)
-    )
-    if partition_by:
-        writer = writer.partitionBy(*partition_by)
-    writer.save(path)
-
-
-def write_initial(
-    df: DataFrame,
-    path: str,
-    partition_by: Sequence[str] | None = None,
-) -> None:
-    """Plain overwrite — used for first creation or full rebuilds."""
-    writer = df.write.format("delta").mode("overwrite").option(
-        "overwriteSchema", "true"
     )
     if partition_by:
         writer = writer.partitionBy(*partition_by)

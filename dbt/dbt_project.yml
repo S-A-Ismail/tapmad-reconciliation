@@ -2,7 +2,7 @@ name: "tapmad_reconciliation"
 version: "1.0.0"
 config-version: 2
 
-# This profile name must match an entry in profiles.yml (see profiles.yml.example).
+# This profile name must match an entry in profiles.yml.
 profile: "tapmad_reconciliation"
 
 model-paths: ["models"]

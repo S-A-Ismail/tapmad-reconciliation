@@ -57,9 +57,9 @@ BRONZE_USER_CHURN_EVENTS = _join(LAKEHOUSE_ROOT, "bronze", "user_churn_events")
 SILVER_PARTNER_EVENTS = _join(LAKEHOUSE_ROOT, "silver", "partner_events")
 SILVER_PLATFORM_EVENTS = _join(LAKEHOUSE_ROOT, "silver", "platform_events")
 
-# Gold (reconciliation + marts).
+# Gold (reconciliation fact). The marts (reconciliation_daily,
+# revenue_monthly_close) are dbt-managed, so they have no path here.
 GOLD_FACT_RECON_BREAK = _join(LAKEHOUSE_ROOT, "gold", "fact_reconciliation_break")
-GOLD_RECON_DAILY = _join(LAKEHOUSE_ROOT, "gold", "reconciliation_daily")
 
 
 def ensure_dirs():

@@ -225,11 +225,6 @@ RECON_CONFIG = {
     # Relative tolerance (fraction). Either abs OR rel passing = "amounts equal".
     "amount_rel_tolerance": 0.005,           # 0.5%
 
-    # How many days a partner txn can drift from the platform business_date
-    # and still be considered the same calendar event. Operators run batch
-    # windows that cross midnight in their local tz.
-    "business_date_window_days": 1,
-
     # How late (in days) a partner record can arrive and still be folded
     # back into its ORIGINAL reconciliation period instead of being treated
     # as a brand-new break. Beyond this, it's an exception.

@@ -44,6 +44,7 @@ x-pipeline-build: &pipeline-build
   networks:
     - default
     - dataplatform-net
+  mem_limit: 4g                     # Spark (local[*]) headroom; caps a runaway job
 
 services:
   # ---- one-shot: run the whole pipeline for one business date --------------
@@ -70,6 +71,7 @@ services:
   postgres:
     image: postgres:13
     profiles: ["airflow"]
+    mem_limit: 512m
     environment:
       POSTGRES_USER: airflow
       POSTGRES_PASSWORD: airflow
@@ -88,6 +90,7 @@ services:
       dockerfile: docker/Dockerfile.airflow
     profiles: ["airflow"]
     user: "0:0"          # root: chmod works on the Docker Desktop bind mount
+    mem_limit: 1g        # init is short-lived (db migrate + create user)
     networks: &airflow-networks
       - default
       - dataplatform-net
@@ -137,6 +140,7 @@ services:
       dockerfile: docker/Dockerfile.airflow
     profiles: ["airflow"]
     user: "0:0"
+    mem_limit: 1g        # webserver is light (UI only)
     networks: *airflow-networks
     depends_on:
       airflow-init:
@@ -154,6 +158,7 @@ services:
       dockerfile: docker/Dockerfile.airflow
     profiles: ["airflow"]
     user: "0:0"
+    mem_limit: 4g        # runs the Spark tasks in-process (LocalExecutor)
     networks: *airflow-networks
     depends_on:
       airflow-init:

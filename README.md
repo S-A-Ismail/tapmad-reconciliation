@@ -656,14 +656,16 @@ stack has to be up first.
 ```bash
 docker compose build       # bakes the Delta + S3A jars into the image
 
-# full Airflow run — UI at http://localhost:8080 (airflow / airflow):
+# full Airflow run:
 MINIO_BUCKET=lakehouse docker compose --profile airflow up -d
-#   then trigger the `tapmad_reconciliation_daily` DAG
+#   then open the UI and trigger the `tapmad_reconciliation_daily` DAG
 
 # or one-shot, without Airflow:
 MINIO_BUCKET=lakehouse docker compose run --rm pipeline   # generate -> bronze -> silver -> gold
 MINIO_BUCKET=lakehouse docker compose run --rm dbt        # register tables + marts + tests
 ```
+
+**Airflow UI:** http://localhost:8080 — log in with **`airflow` / `airflow`**.
 
 `make build` / `make pipeline` / `make dbt` / `make airflow-up` wrap the same
 commands. To point dbt at Databricks instead of the local Spark, set

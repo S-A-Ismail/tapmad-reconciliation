@@ -99,6 +99,11 @@ services:
       AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
       AIRFLOW__CORE__DAGS_FOLDER: /opt/airflow/repo/airflow/dags
       AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      # shared secret so the webserver can fetch task logs from the scheduler's
+      # log server (the URLs are JWT-signed). Without one shared key each
+      # container generates its own and the UI log view fails with
+      # InvalidSignatureError.
+      AIRFLOW__WEBSERVER__SECRET_KEY: ${AIRFLOW_SECRET_KEY:-tapmad-local-airflow-secret}
       # full lakehouse on MinIO (same as the pipeline/dbt services)
       LAKEHOUSE_ROOT: s3a://${MINIO_BUCKET:-lakehouse}/tapmad
       LANDING_ROOT: /lakehouse/landing
